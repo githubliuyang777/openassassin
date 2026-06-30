@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(pip install *)",
+      "Bash(uvicorn *)",
+      "Bash(docker compose *)",
+      "Bash(docker ps *)",
+      "Bash(curl *)",
+      "Bash(git diff *)",
+      "Bash(git status *)",
+      "Bash(git log *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(mkdir *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(python -c *)",
+      "Bash(echo *)",
+      "Bash(pytest *)",
+      "Bash(python -m pytest *)",
+      "Bash(npm test *)",
+      "Bash(npm run test *)",
+      "Bash(npx vitest *)",
+      "Bash(bash tests/*)"
+    ],
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(docker rm -f *)",
+      "Bash(git push *)",
+      "Bash(git reset --hard *)",
+      "Bash(docker system prune *)"
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    database_url: str = "sqlite:///./data/ops.db"
+    jwt_secret: str = "change-me-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_hours: int = 24
+    master_key: str = "change-me-master-key-32-bytes!!"
+    admin_default_password: str = "admin"
+    sandbox_image_shell: str = "alpine:3.20"
+    sandbox_image_python: str = "python:3.12-alpine"
+    sandbox_memory_limit: str = "256m"
+    sandbox_cpu_limit: float = 0.5
+    sandbox_default_timeout: int = 300
+    sandbox_max_timeout: int = 3600
+    log_dir: str = "./data/logs"
+
+    model_config = {"env_file": ".env", "extra": "ignore"}
+
+
+settings = Settings()

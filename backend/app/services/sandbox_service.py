@@ -1,0 +1,106 @@
+import os
+import time
+import tempfile
+import docker
+from docker.errors import ImageNotFound
+
+from app.config import settings
+
+
+def _mask_secrets(line: str, secrets: list[str]) -> str:
+    for s in secrets:
+        if s:
+            line = line.replace(s, "***")
+    return line
+
+
+def execute_script(
+    script_type: str,
+    content: str,
+    timeout: int,
+    env_vars: dict,
+    credential_values: dict[str, str],
+) -> dict:
+    timeout = min(timeout or settings.sandbox_default_timeout, settings.sandbox_max_timeout)
+    image = settings.sandbox_image_python if script_type == "python" else settings.sandbox_image_shell
+    work_dir = "/workspace"
+    script_file = "script.py" if script_type == "python" else "script.sh"
+    command = ["python", script_file] if script_type == "python" else ["sh", script_file]
+
+    sandbox_env = {**env_vars, **credential_values}
+    secrets_to_mask = list(credential_values.values())
+
+    client = docker.from_env()
+    try:
+        client.images.get(image)
+    except ImageNotFound:
+        client.images.pull(image)
+
+    log_lines: list[str] = []
+    container = None
+    tmp_dir = None
+
+    try:
+        tmp_dir = tempfile.mkdtemp(prefix="ops-sandbox-")
+        script_path = os.path.join(tmp_dir, script_file)
+        with open(script_path, "w") as f:
+            f.write(content)
+        os.chmod(script_path, 0o555)
+
+        container = client.containers.run(
+            image=image,
+            command=command,
+            environment=sandbox_env,
+            working_dir=work_dir,
+            volumes={tmp_dir: {"bind": work_dir, "mode": "ro"}},
+            mem_limit=settings.sandbox_memory_limit,
+            nano_cpus=int(settings.sandbox_cpu_limit * 1e9),
+            network_mode="none",
+            read_only=True,
+            detach=True,
+        )
+
+        deadline = time.time() + timeout
+        exit_code = -1
+        while time.time() < deadline:
+            container.reload()
+            if container.status != "running":
+                break
+            time.sleep(0.5)
+
+        container.reload()
+        if container.status == "running":
+            container.kill()
+            status = "timeout"
+        else:
+            result = container.wait()
+            exit_code = result["StatusCode"]
+            status = "success" if exit_code == 0 else "failed"
+
+        raw_logs = container.logs(stdout=True, stderr=True).decode(errors="replace")
+        for line in raw_logs.splitlines():
+            masked = _mask_secrets(line, secrets_to_mask)
+            log_lines.append(masked)
+
+    except Exception as exc:
+        status = "failed"
+        exit_code = -1
+        log_lines.append(f"[SANDBOX_ERROR] {str(exc)}")
+    finally:
+        if container:
+            try:
+                container.remove(force=True)
+            except Exception:
+                pass
+        if tmp_dir:
+            try:
+                import shutil
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+            except Exception:
+                pass
+
+    return {
+        "status": status,
+        "exit_code": exit_code,
+        "log": "\n".join(log_lines),
+    }

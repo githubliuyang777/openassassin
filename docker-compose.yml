@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ./backend
+    container_name: ops-backend
+    restart: unless-stopped
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - MASTER_KEY=${MASTER_KEY:-change-me-master-key-32-bytes!!}
+      - ADMIN_DEFAULT_PASSWORD=${ADMIN_DEFAULT_PASSWORD:-admin}
+      - DATABASE_URL=sqlite:///./data/ops.db
+      - SANDBOX_IMAGE_SHELL=${SANDBOX_IMAGE_SHELL:-alpine:3.20}
+      - SANDBOX_IMAGE_PYTHON=${SANDBOX_IMAGE_PYTHON:-python:3.12-alpine}
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    container_name: ops-frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
