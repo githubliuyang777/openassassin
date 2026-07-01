@@ -14,9 +14,14 @@
     <n-data-table :columns="columns" :data="scripts" :loading="loading" :row-key="(r: any) => r.id"
       :pagination="{ page: page, pageSize: pageSize, itemCount: total, onChange: onPageChange }" />
 
-    <n-modal v-model:show="showDelete" title="确认删除" @positive-click="confirmDelete" positive-text="删除"
-      type="warning">
+    <n-modal v-model:show="showDelete" preset="card" title="确认删除" style="width: 400px">
       <p>确定要删除脚本 "{{ deleting?.name }}" 吗？</p>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showDelete = false">取消</n-button>
+          <n-button type="error" :loading="deletingLoading" @click="confirmDelete">删除</n-button>
+        </n-space>
+      </template>
     </n-modal>
   </div>
 </template>
@@ -25,7 +30,7 @@
 import { ref, h, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  NH3, NSpace, NButton, NIcon, NInput, NDataTable, NModal, useMessage,
+  NH3, NSpace, NButton, NIcon, NInput, NDataTable, NModal, NTag, useMessage,
 } from 'naive-ui'
 import { AddOutline } from '@vicons/ionicons5'
 import { fetchScripts, deleteScript, type Script } from '@/api/scripts'
@@ -41,12 +46,13 @@ const pageSize = ref(20)
 const total = ref(0)
 const showDelete = ref(false)
 const deleting = ref<Script | null>(null)
+const deletingLoading = ref(false)
 
 const columns: any[] = [
   { title: '名称', key: 'name', ellipsis: true },
   {
     title: '类型', key: 'type', width: 80,
-    render: (r: any) => h('n-tag', { type: r.type === 'python' ? 'info' : 'success', size: 'small' }, () => r.type),
+    render: (r: any) => h(NTag, { type: r.type === 'python' ? 'info' : 'success', size: 'small' }, () => r.type),
   },
   { title: '描述', key: 'description', ellipsis: true },
   { title: '超时(s)', key: 'timeout', width: 80 },
@@ -79,12 +85,16 @@ function onPageChange(p: number) {
 
 async function confirmDelete() {
   if (!deleting.value) return
+  deletingLoading.value = true
   try {
     await deleteScript(deleting.value.id)
     message.success('删除成功')
+    showDelete.value = false
     loadScripts()
   } catch (e: any) {
     message.error(e.message)
+  } finally {
+    deletingLoading.value = false
   }
 }
 
