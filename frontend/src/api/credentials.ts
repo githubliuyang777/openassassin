@@ -5,6 +5,9 @@ export interface Credential {
   name: string
   key: string
   description: string
+  type: string
+  expires_at: string | null
+  alert_enabled: boolean
   created_at: string
   updated_at: string
 }
@@ -17,7 +20,10 @@ export function fetchCredentials() {
   return api.get<Credential[]>('/credentials')
 }
 
-export function createCredential(data: { name: string; key: string; value: string; description: string }) {
+export function createCredential(data: {
+  name: string; key: string; value: string; description: string
+  type?: string; expires_at?: string | null
+}) {
   return api.post('/credentials', data)
 }
 
@@ -25,6 +31,23 @@ export function revealCredential(id: number) {
   return api.get<CredentialReveal>(`/credentials/${id}`)
 }
 
+export function updateCredential(id: number, data: {
+  description?: string; type?: string; expires_at?: string | null; alert_enabled?: boolean
+}) {
+  return api.put<Credential>(`/credentials/${id}`, data)
+}
+
 export function deleteCredential(id: number) {
   return api.delete(`/credentials/${id}`)
+}
+
+export const CREDENTIAL_TYPES = [
+  { label: '通用密钥', value: 'generic' },
+  { label: 'Kubeconfig', value: 'kubeconfig' },
+  { label: 'TLS 证书', value: 'tls_cert' },
+  { label: 'API Token', value: 'api_token' },
+] as const
+
+export function getTypeLabel(type: string): string {
+  return CREDENTIAL_TYPES.find(t => t.value === type)?.label || type
 }
