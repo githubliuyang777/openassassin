@@ -1,3 +1,7 @@
+import base64
+import yaml
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -8,6 +12,43 @@ from app.models.credential import Credential
 from app.services import credential_service
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
+
+
+@router.post("/parse-kubeconfig")
+def parse_kubeconfig(body: dict):
+    """Parse a kubeconfig value and extract the client certificate expiry date."""
+    content = body.get("value", "")
+    if not content:
+        raise HTTPException(status_code=400, detail="请提供 kubeconfig 内容")
+
+    try:
+        cfg = yaml.safe_load(content)
+    except Exception:
+        raise HTTPException(status_code=400, detail="kubeconfig 格式无效，无法解析 YAML")
+
+    # find first user with client-certificate-data
+    cert_b64 = None
+    for user in cfg.get("users", []) or []:
+        u = user.get("user", {}) or {}
+        if u.get("client-certificate-data"):
+            cert_b64 = u["client-certificate-data"]
+            break
+
+    if not cert_b64:
+        raise HTTPException(status_code=400, detail="kubeconfig 中未找到 client-certificate-data")
+
+    try:
+        der = base64.b64decode(cert_b64)
+        from cryptography import x509
+        cert = x509.load_pem_x509_certificate(der) if der.startswith(b"-----") else x509.load_der_x509_certificate(der)
+        expires_at = cert.not_valid_after_utc if hasattr(cert, 'not_valid_after_utc') else cert.not_valid_after.replace(tzinfo=timezone.utc)
+    except Exception:
+        raise HTTPException(status_code=400, detail="无法解析证书，请检查 client-certificate-data")
+
+    return {
+        "expires_at": expires_at.strftime("%Y-%m-%dT%H:%M:%S"),
+        "days_left": (expires_at - datetime.now(timezone.utc)).days,
+    }
 
 
 @router.get("", response_model=list[CredentialResponse])

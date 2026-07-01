@@ -31,8 +31,13 @@
           <n-input type="textarea" v-model:value="createForm.value" placeholder="密钥内容" :rows="4" />
         </n-form-item>
         <n-form-item path="expires_at" label="截止有效期">
-          <n-date-picker v-model:formatted-value="createForm.expires_at" type="date"
-            value-format="yyyy-MM-dd'T'HH:mm:ss" style="width: 100%" placeholder="选填，过期后可用于告警" />
+          <n-space style="width: 100%">
+            <n-date-picker v-model:formatted-value="createForm.expires_at" type="date"
+              value-format="yyyy-MM-dd'T'HH:mm:ss" style="flex: 1" placeholder="选填，过期后可用于告警" />
+            <n-button v-if="createForm.type === 'kubeconfig'" size="small" :loading="parsingKc" @click="handleParseKubeconfig">
+              自动解析
+            </n-button>
+          </n-space>
         </n-form-item>
         <n-form-item path="description" label="描述">
           <n-input v-model:value="createForm.description" placeholder="用途说明" />
@@ -74,6 +79,7 @@
 
 <script setup lang="ts">
 import { ref, h, computed, onMounted } from 'vue'
+import axios from 'axios'
 import {
   NH3, NSpace, NButton, NIcon, NDataTable, NModal, NForm, NFormItem,
   NInput, NSelect, NDatePicker, NGrid, NGridItem,
@@ -93,6 +99,7 @@ const showCreate = ref(false)
 const showReveal = ref(false)
 const showDelete = ref(false)
 const saving = ref(false)
+const parsingKc = ref(false)
 const deleting_loading = ref(false)
 const deleting = ref<Credential | null>(null)
 const revealed = ref<CredentialReveal | null>(null)
@@ -161,6 +168,25 @@ const columns = computed(() => [
     ]),
   },
 ])
+
+async function handleParseKubeconfig() {
+  if (!createForm.value.value.trim()) {
+    message.warning('请先填入 kubeconfig 内容')
+    return
+  }
+  parsingKc.value = true
+  try {
+    const resp = await axios.post('/api/v1/credentials/parse-kubeconfig', {
+      value: createForm.value.value,
+    })
+    createForm.value.expires_at = resp.data.expires_at
+    message.success(`已解析有效期: ${resp.data.expires_at.slice(0, 10)} (剩余 ${resp.data.days_left} 天)`)
+  } catch (e: any) {
+    message.error(e.response?.data?.detail || '解析失败')
+  } finally {
+    parsingKc.value = false
+  }
+}
 
 async function load() {
   loading.value = true
