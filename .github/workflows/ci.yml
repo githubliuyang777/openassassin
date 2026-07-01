@@ -1,0 +1,52 @@
+name: CI Gate
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -t infra-ops_backend ./backend
+
+      - name: Build frontend image
+        run: docker build -t infra-ops_frontend ./frontend
+
+      - name: Start services
+        run: |
+          docker compose up -d
+        env:
+          JWT_SECRET: ci-test-secret-at-least-32-chars!!
+          MASTER_KEY: ci-master-key-needs-32-bytes-!!
+
+      - name: Wait for backend
+        run: |
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:8000/docs > /dev/null 2>&1; then
+              echo "Backend ready"
+              exit 0
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+          echo "Backend failed to start"
+          docker compose logs backend
+          exit 1
+
+      - name: Smoke test
+        run: bash tests/smoke.sh
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          docker compose logs backend
+          docker compose logs frontend
