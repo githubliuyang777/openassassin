@@ -14,19 +14,15 @@ from app.services import credential_service
 router = APIRouter(prefix="/credentials", tags=["credentials"])
 
 
-@router.post("/parse-kubeconfig")
-def parse_kubeconfig(body: dict):
-    """Parse a kubeconfig value and extract the client certificate expiry date."""
-    content = body.get("value", "")
+def _parse_kubeconfig_expiry(content: str) -> datetime | None:
+    """Try to extract client certificate expiry from kubeconfig content. Returns None if not found."""
     if not content:
-        raise HTTPException(status_code=400, detail="请提供 kubeconfig 内容")
-
+        return None
     try:
         cfg = yaml.safe_load(content)
     except Exception:
-        raise HTTPException(status_code=400, detail="kubeconfig 格式无效，无法解析 YAML")
+        return None
 
-    # find first user with client-certificate-data
     cert_b64 = None
     for user in cfg.get("users", []) or []:
         u = user.get("user", {}) or {}
@@ -35,15 +31,27 @@ def parse_kubeconfig(body: dict):
             break
 
     if not cert_b64:
-        raise HTTPException(status_code=400, detail="kubeconfig 中未找到 client-certificate-data")
+        return None
 
     try:
         der = base64.b64decode(cert_b64)
         from cryptography import x509
         cert = x509.load_pem_x509_certificate(der) if der.startswith(b"-----") else x509.load_der_x509_certificate(der)
-        expires_at = cert.not_valid_after_utc if hasattr(cert, 'not_valid_after_utc') else cert.not_valid_after.replace(tzinfo=timezone.utc)
+        return cert.not_valid_after_utc if hasattr(cert, 'not_valid_after_utc') else cert.not_valid_after.replace(tzinfo=timezone.utc)
     except Exception:
-        raise HTTPException(status_code=400, detail="无法解析证书，请检查 client-certificate-data")
+        return None
+
+
+@router.post("/parse-kubeconfig")
+def parse_kubeconfig(body: dict):
+    """Parse a kubeconfig value and extract the client certificate expiry date."""
+    content = body.get("value", "")
+    if not content:
+        raise HTTPException(status_code=400, detail="请提供 kubeconfig 内容")
+
+    expires_at = _parse_kubeconfig_expiry(content)
+    if expires_at is None:
+        raise HTTPException(status_code=400, detail="kubeconfig 中未找到 client-certificate-data 或证书解析失败")
 
     return {
         "expires_at": expires_at.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -65,6 +73,10 @@ def create_credential(
     db: Session = Depends(get_db),
     _user: dict = Depends(get_current_user),
 ):
+    expires_at = data.expires_at
+    if expires_at is None and data.type == "kubeconfig":
+        expires_at = _parse_kubeconfig_expiry(data.value)
+
     encrypted = credential_service.encrypt(data.value)
     cred = Credential(
         name=data.name,
@@ -72,7 +84,7 @@ def create_credential(
         encrypted_value=encrypted,
         description=data.description,
         type=data.type,
-        expires_at=data.expires_at,
+        expires_at=expires_at,
     )
     db.add(cred)
     db.commit()
