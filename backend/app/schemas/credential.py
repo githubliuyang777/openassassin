@@ -8,6 +8,15 @@ class CredentialCreate(BaseModel):
     key: str
     value: str
     description: str = ""
+    type: str = "generic"
+    expires_at: Optional[datetime] = None
+
+
+class CredentialUpdate(BaseModel):
+    description: Optional[str] = None
+    type: Optional[str] = None
+    expires_at: Optional[datetime] = None
+    alert_enabled: Optional[bool] = None
 
 
 class CredentialResponse(BaseModel):
@@ -15,6 +24,9 @@ class CredentialResponse(BaseModel):
     name: str
     key: str
     description: str
+    type: str
+    expires_at: Optional[datetime] = None
+    alert_enabled: bool = True
     created_at: datetime
     updated_at: datetime
 
@@ -27,3 +39,6 @@ class CredentialRevealResponse(BaseModel):
     key: str
     value: str
     description: str
+    type: str
+    expires_at: Optional[datetime] = None
+    alert_enabled: bool = True

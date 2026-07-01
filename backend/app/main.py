@@ -1,3 +1,4 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
 
@@ -10,20 +11,47 @@ from app.services.auth_service import get_or_create_admin
 from app.api import auth, scripts, credentials, executions
 
 
-def _migrate_users_table():
-    """Add new columns to existing users table if missing (SQLite)."""
+def _migrate(table: str, columns: list[tuple[str, str]]):
+    """Add new columns to an existing table if missing (SQLite)."""
     from sqlalchemy import text
-    migrations = [
-        "ALTER TABLE users ADD COLUMN email VARCHAR(128) DEFAULT ''",
-        "ALTER TABLE users ADD COLUMN reset_code VARCHAR(8)",
-        "ALTER TABLE users ADD COLUMN reset_code_expires_at DATETIME",
-    ]
     with engine.begin() as conn:
-        for stmt in migrations:
+        for col_name, col_def in columns:
             try:
-                conn.execute(text(stmt))
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}"))
             except Exception:
-                pass  # column already exists
+                pass
+
+
+def _migrate_users_table():
+    _migrate("users", [
+        ("email", "VARCHAR(128) DEFAULT ''"),
+        ("reset_code", "VARCHAR(8)"),
+        ("reset_code_expires_at", "DATETIME"),
+    ])
+
+
+def _migrate_credentials_table():
+    _migrate("credentials", [
+        ("type", "VARCHAR(32) DEFAULT 'generic'"),
+        ("expires_at", "DATETIME"),
+        ("alert_enabled", "BOOLEAN DEFAULT 1"),
+        ("last_alerted_at", "DATETIME"),
+    ])
+
+
+async def _alert_check_loop():
+    """Background task: periodically check for expiring credentials and send alerts."""
+    while True:
+        await asyncio.sleep(settings.alert_check_interval_minutes * 60)
+        try:
+            from app.services.alert_service import check_and_alert
+            db = SessionLocal()
+            try:
+                check_and_alert(db)
+            finally:
+                db.close()
+        except Exception:
+            pass
 
 
 @asynccontextmanager
@@ -32,10 +60,13 @@ async def lifespan(app: FastAPI):
     os.makedirs(settings.log_dir, exist_ok=True)
     Base.metadata.create_all(bind=engine)
     _migrate_users_table()
+    _migrate_credentials_table()
     db = SessionLocal()
     get_or_create_admin(db)
     db.close()
+    task = asyncio.create_task(_alert_check_loop())
     yield
+    task.cancel()
 
 
 app = FastAPI(title="Ops Platform", version="0.1.0", lifespan=lifespan)

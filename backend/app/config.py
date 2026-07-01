@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""
     smtp_use_tls: bool = True
+    # alert notification
+    alert_email: str = ""
+    alert_before_days: int = 7
+    alert_check_interval_minutes: int = 60
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
