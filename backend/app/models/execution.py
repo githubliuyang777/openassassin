@@ -1,6 +1,6 @@
-from sqlalchemy import Column, Integer, String, Text, JSON, DateTime, func
+from sqlalchemy import Column, Integer, String, Text, JSON, DateTime
 
-from app.database import Base
+from app.database import Base, china_now
 
 
 class Execution(Base):
@@ -9,7 +9,7 @@ class Execution(Base):
     id = Column(Integer, primary_key=True, index=True)
     script_id = Column(Integer, nullable=False, index=True)
     status = Column(String(16), default="pending")  # pending | running | success | failed | timeout
-    started_at = Column(DateTime, server_default=func.now())
+    started_at = Column(DateTime, default=china_now)
     finished_at = Column(DateTime, nullable=True)
     exit_code = Column(Integer, nullable=True)
     log_path = Column(String(512), nullable=True)

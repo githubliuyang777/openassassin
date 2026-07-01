@@ -1,6 +1,6 @@
 import base64
 import yaml
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -12,6 +12,8 @@ from app.models.credential import Credential
 from app.services import credential_service
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
+
+CHINA_TZ = timezone(timedelta(hours=8))
 
 
 def _parse_kubeconfig_expiry(content: str) -> datetime | None:
@@ -37,7 +39,8 @@ def _parse_kubeconfig_expiry(content: str) -> datetime | None:
         der = base64.b64decode(cert_b64)
         from cryptography import x509
         cert = x509.load_pem_x509_certificate(der) if der.startswith(b"-----") else x509.load_der_x509_certificate(der)
-        return cert.not_valid_after_utc if hasattr(cert, 'not_valid_after_utc') else cert.not_valid_after.replace(tzinfo=timezone.utc)
+        utc_expiry = cert.not_valid_after_utc if hasattr(cert, 'not_valid_after_utc') else cert.not_valid_after.replace(tzinfo=timezone.utc)
+        return utc_expiry.astimezone(CHINA_TZ).replace(tzinfo=None)
     except Exception:
         return None
 
@@ -55,7 +58,7 @@ def parse_kubeconfig(body: dict):
 
     return {
         "expires_at": expires_at.strftime("%Y-%m-%dT%H:%M:%S"),
-        "days_left": (expires_at - datetime.now(timezone.utc)).days,
+        "days_left": (expires_at - datetime.now(CHINA_TZ).replace(tzinfo=None)).days,
     }
 
 
