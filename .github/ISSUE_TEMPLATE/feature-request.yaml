@@ -2,7 +2,6 @@ name: 特性需求-模板
 description: 当您需要向社区提交新特性需求时，请使用此模板。
 title: "[特性]: "
 labels: ["enhancement"]
-type: "Feature"
 body:
   - type: markdown
     attributes:
