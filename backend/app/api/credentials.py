@@ -1,19 +1,17 @@
 import base64
 import yaml
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import get_db, CHINA_TZ, china_now
 from app.middleware.auth_middleware import get_current_user
 from app.schemas.credential import CredentialCreate, CredentialUpdate, CredentialResponse, CredentialRevealResponse
 from app.models.credential import Credential
 from app.services import credential_service
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
-
-CHINA_TZ = timezone(timedelta(hours=8))
 
 
 def _parse_kubeconfig_expiry(content: str) -> datetime | None:
@@ -58,7 +56,7 @@ def parse_kubeconfig(body: dict):
 
     return {
         "expires_at": expires_at.strftime("%Y-%m-%dT%H:%M:%S"),
-        "days_left": (expires_at - datetime.now(CHINA_TZ).replace(tzinfo=None)).days,
+        "days_left": (expires_at - china_now()).days,
     }
 
 

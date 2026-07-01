@@ -1,15 +1,10 @@
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.credential import Credential
-
-CHINA_TZ = timezone(timedelta(hours=8))
-
-
-def _now() -> datetime:
-    return datetime.now(CHINA_TZ).replace(tzinfo=None)
+from app.database import china_now
 
 
 def check_and_alert(db: Session) -> int:
@@ -17,7 +12,7 @@ def check_and_alert(db: Session) -> int:
     if not settings.alert_email or not settings.smtp_host:
         return 0
 
-    now = _now()
+    now = china_now()
     threshold = now + timedelta(days=settings.alert_before_days)
     expiring = (
         db.query(Credential)
