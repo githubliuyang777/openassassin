@@ -30,17 +30,16 @@ def execute_script(
     sandbox_env = {**env_vars, **credential_values}
     secrets_to_mask = list(credential_values.values())
 
-    client = docker.from_env()
-    try:
-        client.images.get(image)
-    except ImageNotFound:
-        client.images.pull(image)
-
     log_lines: list[str] = []
     container = None
     tmp_dir = None
 
     try:
+        client = docker.from_env()
+        try:
+            client.images.get(image)
+        except ImageNotFound:
+            client.images.pull(image)
         os.makedirs(settings.sandbox_tmp_dir, exist_ok=True)
         tmp_dir = os.path.join(settings.sandbox_tmp_dir, uuid.uuid4().hex)
         os.makedirs(tmp_dir)

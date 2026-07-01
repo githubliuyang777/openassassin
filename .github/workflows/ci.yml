@@ -7,9 +7,57 @@ on:
     branches: [master, main]
 
 jobs:
-  build-and-test:
+  backend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run backend tests
+        working-directory: backend
+        run: pytest tests/ -v
+        env:
+          JWT_SECRET: ci-test-secret-32-chars!!
+          MASTER_KEY: ci-master-key-32-bytes!!
+          DATABASE_URL: sqlite:///./test.db
+          SANDBOX_TMP_DIR: /tmp/infra-ops-sandbox-test
+          LOG_DIR: /tmp/ops-test-logs
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm run test
+
+  build-and-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: [backend-tests, frontend-tests]
 
     steps:
       - name: Checkout
