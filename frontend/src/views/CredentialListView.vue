@@ -32,7 +32,7 @@
         </n-form-item>
         <n-form-item path="expires_at" label="截止有效期">
           <n-space style="width: 100%">
-            <n-date-picker v-model:formatted-value="createForm.expires_at" type="date"
+            <n-date-picker v-model:formatted-value="createForm.expires_at" type="datetime"
               value-format="yyyy-MM-dd'T'HH:mm:ss" style="flex: 1" placeholder="选填，过期后可用于告警" />
             <n-button v-if="createForm.type === 'kubeconfig'" size="small" :loading="parsingKc" @click="handleParseKubeconfig">
               自动解析
@@ -60,7 +60,7 @@
           <n-text code>{{ revealed.value }}</n-text>
         </n-descriptions-item>
         <n-descriptions-item v-if="revealed.expires_at" label="有效期">
-          {{ revealed.expires_at }}
+          {{ formatExpiry(revealed.expires_at) }}
         </n-descriptions-item>
       </n-descriptions>
     </n-modal>
@@ -124,6 +124,11 @@ function daysLeft(expiresAt: string | null): number | null {
   return Math.ceil((exp - now) / (1000 * 60 * 60 * 24))
 }
 
+function formatExpiry(isoStr: string | null): string {
+  if (!isoStr) return '—'
+  return isoStr.replace('T', ' ').slice(0, 16)
+}
+
 type TagColor = 'warning' | 'error' | 'info' | 'default'
 function typeColor(type: string): TagColor {
   const colors: Record<string, TagColor> = {
@@ -143,11 +148,11 @@ const columns = computed(() => [
   },
   { title: '环境变量', key: 'key', width: 110, render: (r: any) => h(NText, { code: true }, () => `$${r.key}`) },
   {
-    title: '有效期', key: 'expires_at', width: 130,
+    title: '有效期', key: 'expires_at', width: 160,
     render: (r: any) => {
       if (!r.expires_at) return h(NText, { depth: 3 }, () => '—')
       const d = daysLeft(r.expires_at)
-      const children: any[] = [h('span', null, r.expires_at?.slice(0, 10))]
+      const children: any[] = [h('span', null, formatExpiry(r.expires_at))]
       if (d !== null && d <= 7 && d > 0) {
         children.push(h(NIcon, { size: 14, color: '#f0a020', style: 'margin-left:6px;vertical-align:middle' }, () => h(AlertCircleOutline)))
         children.push(h(NText, { type: 'warning', style: 'margin-left:2px' }, () => `${d}d`))
@@ -180,7 +185,7 @@ async function handleParseKubeconfig() {
       value: createForm.value.value,
     })
     createForm.value.expires_at = resp.data.expires_at
-    message.success(`已解析有效期: ${resp.data.expires_at.slice(0, 10)} (剩余 ${resp.data.days_left} 天)`)
+    message.success(`已解析有效期: ${formatExpiry(resp.data.expires_at)} (剩余 ${resp.data.days_left} 天)`)
   } catch (e: any) {
     message.error(e.response?.data?.detail || '解析失败')
   } finally {
