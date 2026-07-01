@@ -1,0 +1,74 @@
+name: 特性需求-模板
+description: 当您需要向社区提交新特性需求时，请使用此模板。
+title: "[特性]: "
+labels: ["enhancement"]
+type: "Feature"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢您为社区提交特性需求！请按照以下提示提供详细信息，以便我们更好地理解需求并评估优先级。
+
+  - type: textarea
+    attributes:
+      label: 需求背景
+      description: 请描述该需求产生的业务背景或使用场景
+      placeholder: |
+        例如：
+        - 当前系统缺少什么能力？
+        - 用户在什么场景下会遇到问题？
+        - 该需求解决什么痛点？
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: 需求描述
+      description: 请详细描述期望实现的功能或特性
+      placeholder: |
+        例如：
+        - 期望增加什么功能？
+        - 功能的核心流程是什么？
+        - 涉及哪些页面或API？
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: 验收标准
+      description: 列出可验证的完成条件
+      placeholder: |
+        例如：
+        - [ ] 用户可以在XX页面看到新增的XX按钮
+        - [ ] 点击按钮后执行XX操作并显示XX结果
+        - [ ] 异常情况下显示XX提示
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: 影响范围
+      description: 请评估该需求可能影响到的模块或系统
+      placeholder: |
+        例如：
+        - 前端：XX页面新增XX组件
+        - 后端：新增/修改XX API
+        - 数据库：新增XX表/字段
+        - 依赖：需要引入XX库
+    validations:
+      required: false
+
+  - type: input
+    attributes:
+      label: 期望版本
+      description: 期望在哪个版本中发布该特性
+      placeholder: 例如 v0.2.0
+    validations:
+      required: false
+
+  - type: textarea
+    attributes:
+      label: 附加信息
+      description: 补充说明、参考链接、原型图等
+    validations:
+      required: false

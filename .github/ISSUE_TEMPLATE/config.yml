@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 运维平台文档
+    url: https://github.com/githubliuyang777/infra-ops
+    about: 请先查阅项目文档了解已有功能
