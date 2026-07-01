@@ -10,11 +10,28 @@ from app.services.auth_service import get_or_create_admin
 from app.api import auth, scripts, credentials, executions
 
 
+def _migrate_users_table():
+    """Add new columns to existing users table if missing (SQLite)."""
+    from sqlalchemy import text
+    migrations = [
+        "ALTER TABLE users ADD COLUMN email VARCHAR(128) DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN reset_code VARCHAR(8)",
+        "ALTER TABLE users ADD COLUMN reset_code_expires_at DATETIME",
+    ]
+    with engine.begin() as conn:
+        for stmt in migrations:
+            try:
+                conn.execute(text(stmt))
+            except Exception:
+                pass  # column already exists
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     os.makedirs("data", exist_ok=True)
     os.makedirs(settings.log_dir, exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    _migrate_users_table()
     db = SessionLocal()
     get_or_create_admin(db)
     db.close()

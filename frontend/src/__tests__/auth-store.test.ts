@@ -6,6 +6,7 @@ vi.mock('@/api/client', () => ({
   api: {
     post: vi.fn(),
     get: vi.fn(),
+    put: vi.fn(),
   },
 }))
 
@@ -68,5 +69,22 @@ describe('Auth Store', () => {
     await store.fetchMe()
     expect(api.get).not.toHaveBeenCalled()
     expect(store.user).toBeNull()
+  })
+
+  it('changePassword calls API and logs out', async () => {
+    const store = useAuthStore()
+    store.token = 'some-token'
+    store.user = { id: 1, username: 'admin', role: 'admin' }
+    localStorage.setItem('token', 'some-token')
+    ;(api.put as any).mockResolvedValue({ data: { message: 'ok' } })
+
+    await store.changePassword('old', 'newpass123')
+
+    expect(api.put).toHaveBeenCalledWith('/auth/password', {
+      old_password: 'old', new_password: 'newpass123',
+    })
+    expect(store.token).toBe('')
+    expect(store.user).toBeNull()
+    expect(store.isLoggedIn).toBe(false)
   })
 })

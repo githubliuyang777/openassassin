@@ -13,6 +13,9 @@
       <n-button type="primary" block :loading="loading" @click="handleLogin">
         登录
       </n-button>
+      <div style="text-align: center; margin-top: 16px">
+        <n-button text type="primary" @click="router.push('/forgot-password')">忘记密码</n-button>
+      </div>
     </n-card>
   </n-layout>
 </template>

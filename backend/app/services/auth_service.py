@@ -1,3 +1,4 @@
+import random
 from datetime import datetime, timedelta, timezone
 
 from jose import jwt
@@ -51,3 +52,38 @@ def get_or_create_admin(db: Session) -> User:
         db.commit()
         db.refresh(user)
     return user
+
+
+def change_password(db: Session, user_id: int, old_password: str, new_password: str) -> bool:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or not verify_password(old_password, user.password_hash):
+        return False
+    user.password_hash = hash_password(new_password)
+    db.commit()
+    return True
+
+
+def generate_reset_code(db: Session, email: str) -> str:
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        return ""
+    code = f"{random.randint(100000, 999999)}"
+    user.reset_code = code
+    user.reset_code_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+    db.commit()
+    return code
+
+
+def reset_password_with_code(db: Session, email: str, code: str, new_password: str) -> bool:
+    user = db.query(User).filter(User.email == email).first()
+    if not user or not user.reset_code:
+        return False
+    if user.reset_code != code:
+        return False
+    if user.reset_code_expires_at is None or datetime.now(timezone.utc) > user.reset_code_expires_at:
+        return False
+    user.password_hash = hash_password(new_password)
+    user.reset_code = None
+    user.reset_code_expires_at = None
+    db.commit()
+    return True
