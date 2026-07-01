@@ -27,5 +27,10 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('token')
   }
 
-  return { token, user, isLoggedIn, login, fetchMe, logout }
+  async function changePassword(oldPassword: string, newPassword: string) {
+    await api.put('/auth/password', { old_password: oldPassword, new_password: newPassword })
+    logout()
+  }
+
+  return { token, user, isLoggedIn, login, fetchMe, logout, changePassword }
 })

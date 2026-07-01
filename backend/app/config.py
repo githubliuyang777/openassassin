@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     sandbox_max_timeout: int = 3600
     sandbox_tmp_dir: str = "/tmp/infra-ops-sandbox"
     log_dir: str = "./data/logs"
+    # SMTP for password reset
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_use_tls: bool = True
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
