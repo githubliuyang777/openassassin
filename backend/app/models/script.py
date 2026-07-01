@@ -1,6 +1,6 @@
-from sqlalchemy import Column, Integer, String, Text, JSON, DateTime, func
+from sqlalchemy import Column, Integer, String, Text, JSON, DateTime
 
-from app.database import Base
+from app.database import Base, china_now
 
 
 class Script(Base):
@@ -13,5 +13,5 @@ class Script(Base):
     content = Column(Text, nullable=False)
     timeout = Column(Integer, default=300)
     env_vars = Column(JSON, default=dict)
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime, default=china_now)
+    updated_at = Column(DateTime, default=china_now, onupdate=china_now)

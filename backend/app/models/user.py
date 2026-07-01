@@ -1,6 +1,6 @@
-from sqlalchemy import Column, Integer, String, DateTime, func
+from sqlalchemy import Column, Integer, String, DateTime
 
-from app.database import Base
+from app.database import Base, china_now
 
 
 class User(Base):
@@ -13,4 +13,4 @@ class User(Base):
     email = Column(String(128), default="")
     reset_code = Column(String(8), nullable=True)
     reset_code_expires_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime, default=china_now)

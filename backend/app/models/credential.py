@@ -1,6 +1,6 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, func
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime
 
-from app.database import Base
+from app.database import Base, china_now
 
 
 class Credential(Base):
@@ -15,5 +15,5 @@ class Credential(Base):
     expires_at = Column(DateTime, nullable=True)
     alert_enabled = Column(Boolean, default=True)
     last_alerted_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime, default=china_now)
+    updated_at = Column(DateTime, default=china_now, onupdate=china_now)
