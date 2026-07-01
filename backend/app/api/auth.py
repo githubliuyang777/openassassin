@@ -14,7 +14,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     user = authenticate(db, body.username, body.password)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
-    token = create_token(user.id, user.username)
+    token = create_token(user.id, user.username, user.role)
     return TokenResponse(access_token=token)
 
 

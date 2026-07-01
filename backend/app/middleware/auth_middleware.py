@@ -12,4 +12,4 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(bearer_
         payload = decode_token(credentials.credentials)
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    return {"id": int(payload["sub"]), "username": payload["username"]}
+    return {"id": int(payload["sub"]), "username": payload["username"], "role": payload["role"]}
