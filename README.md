@@ -9,7 +9,10 @@
 git clone https://github.com/githubliuyang777/infra-ops.git
 cd infra-ops
 
-# 一键部署
+# 构建并部署（无缓存构建前后端镜像 + 自动拉起）
+bash deploy.sh
+
+# 或直接拉取已有镜像启动
 docker compose up -d
 
 # 访问前端
@@ -70,6 +73,7 @@ infra-ops/
 │   └── package.json
 ├── tests/
 │   └── smoke.sh                    # curl 冒烟测试
+├── deploy.sh                        # 一键构建部署脚本
 ├── docker-compose.yml
 └── .github/workflows/ci.yml        # CI 门禁
 ```
