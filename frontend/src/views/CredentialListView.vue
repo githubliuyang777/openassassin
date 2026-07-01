@@ -10,7 +10,7 @@
 
     <n-data-table :columns="columns" :data="credentials" :loading="loading" :row-key="(r: any) => r.id" />
 
-    <n-modal v-model:show="showCreate" title="新建密钥" @positive-click="handleCreate" positive-text="保存">
+    <n-modal v-model:show="showCreate" preset="card" title="新建密钥" style="width: 480px">
       <n-form ref="createFormRef" :model="createForm" :rules="createRules" label-placement="top">
         <n-form-item path="name" label="名称">
           <n-input v-model:value="createForm.name" placeholder="如: K8s 集群 Token" />
@@ -25,6 +25,12 @@
           <n-input v-model:value="createForm.description" placeholder="用途说明" />
         </n-form-item>
       </n-form>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showCreate = false">取消</n-button>
+          <n-button type="primary" :loading="saving" @click="handleCreate">保存</n-button>
+        </n-space>
+      </template>
     </n-modal>
 
     <n-modal v-model:show="showReveal" title="查看密钥">
@@ -37,9 +43,14 @@
       </n-descriptions>
     </n-modal>
 
-    <n-modal v-model:show="showDelete" title="确认删除" @positive-click="confirmDelete" positive-text="删除"
-      type="warning">
+    <n-modal v-model:show="showDelete" preset="card" title="确认删除" style="width: 400px">
       <p>确定要删除密钥 "{{ deleting?.name }}" 吗？</p>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showDelete = false">取消</n-button>
+          <n-button type="error" :loading="deleting_loading" @click="confirmDelete">删除</n-button>
+        </n-space>
+      </template>
     </n-modal>
   </div>
 </template>
@@ -48,7 +59,7 @@
 import { ref, h, onMounted } from 'vue'
 import {
   NH3, NSpace, NButton, NIcon, NDataTable, NModal, NForm, NFormItem,
-  NInput, NDescriptions, NDescriptionsItem, NText, useMessage,
+  NInput, NDescriptions, NDescriptionsItem, NText, NTag, useMessage,
 } from 'naive-ui'
 import { AddOutline } from '@vicons/ionicons5'
 import {
@@ -63,6 +74,8 @@ const loading = ref(false)
 const showCreate = ref(false)
 const showReveal = ref(false)
 const showDelete = ref(false)
+const saving = ref(false)
+const deleting_loading = ref(false)
 const deleting = ref<Credential | null>(null)
 const revealed = ref<CredentialReveal | null>(null)
 
@@ -76,7 +89,7 @@ const createRules = {
 
 const columns: any[] = [
   { title: '名称', key: 'name', ellipsis: true },
-  { title: '环境变量', key: 'key', render: (r: any) => h('n-text', { code: true }, `$${r.key}`) },
+  { title: '环境变量', key: 'key', render: (r: any) => h(NText, { code: true }, () => `$${r.key}`) },
   { title: '描述', key: 'description', ellipsis: true },
   { title: '更新时间', key: 'updated_at', width: 170 },
   {
@@ -100,17 +113,18 @@ async function load() {
 
 async function handleCreate() {
   const valid = await createFormRef.value?.validate().catch(() => false)
-  if (!valid) return false
+  if (!valid) return
+  saving.value = true
   try {
     await createCredential(createForm.value)
     message.success('创建成功')
     showCreate.value = false
     createForm.value = { name: '', key: '', value: '', description: '' }
     load()
-    return true
   } catch (e: any) {
     message.error(e.message)
-    return false
+  } finally {
+    saving.value = false
   }
 }
 
@@ -126,12 +140,16 @@ async function handleReveal(id: number) {
 
 async function confirmDelete() {
   if (!deleting.value) return
+  deleting_loading.value = true
   try {
     await deleteCredential(deleting.value.id)
     message.success('删除成功')
+    showDelete.value = false
     load()
   } catch (e: any) {
     message.error(e.message)
+  } finally {
+    deleting_loading.value = false
   }
 }
 
