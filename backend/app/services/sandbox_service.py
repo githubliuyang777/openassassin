@@ -1,6 +1,6 @@
 import os
 import time
-import tempfile
+import uuid
 import docker
 from docker.errors import ImageNotFound
 
@@ -41,7 +41,9 @@ def execute_script(
     tmp_dir = None
 
     try:
-        tmp_dir = tempfile.mkdtemp(prefix="ops-sandbox-")
+        os.makedirs(settings.sandbox_tmp_dir, exist_ok=True)
+        tmp_dir = os.path.join(settings.sandbox_tmp_dir, uuid.uuid4().hex)
+        os.makedirs(tmp_dir)
         script_path = os.path.join(tmp_dir, script_file)
         with open(script_path, "w") as f:
             f.write(content)

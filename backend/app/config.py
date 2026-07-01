@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     sandbox_cpu_limit: float = 0.5
     sandbox_default_timeout: int = 300
     sandbox_max_timeout: int = 3600
+    sandbox_tmp_dir: str = "/tmp/infra-ops-sandbox"
     log_dir: str = "./data/logs"
 
     model_config = {"env_file": ".env", "extra": "ignore"}

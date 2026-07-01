@@ -15,6 +15,7 @@ services:
     volumes:
       - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/infra-ops-sandbox:/tmp/infra-ops-sandbox
     ports:
       - "8000:8000"
 
