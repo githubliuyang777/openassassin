@@ -25,7 +25,8 @@ const total = ref(0)
 const showLog = ref(false)
 const log = ref('')
 
-const statusColors: Record<string, string> = {
+type TagType = 'success' | 'error' | 'warning' | 'info' | 'default' | 'primary'
+const statusColors: Record<string, TagType> = {
   success: 'success', failed: 'error', timeout: 'warning', running: 'info', pending: 'default',
 }
 

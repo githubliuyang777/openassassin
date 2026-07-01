@@ -27,7 +27,7 @@
       </n-grid>
       <n-form-item path="content" label="脚本内容">
         <n-input type="textarea" v-model:value="form.content" :rows="14"
-          :placeholder="form.type === 'python' ? 'print(\"hello ops\")' : '#!/bin/sh\necho \"hello ops\"'"
+          :placeholder="placeholder"
           style="font-family: monospace" />
       </n-form-item>
     </n-form>
@@ -53,6 +53,10 @@ const route = useRoute()
 const message = useMessage()
 
 const isEdit = computed(() => !!route.params.id)
+
+const placeholder = computed(() =>
+  form.value.type === 'python' ? 'print("hello ops")' : '#!/bin/sh\necho "hello ops"'
+)
 
 const typeOptions = [
   { label: 'Shell', value: 'shell' },
