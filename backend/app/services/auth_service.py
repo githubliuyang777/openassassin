@@ -74,7 +74,7 @@ def generate_reset_code(db: Session, email: str) -> str:
         return ""
     code = f"{random.randint(100000, 999999)}"
     user.reset_code = code
-    user.reset_code_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+    user.reset_code_expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=5)
     db.commit()
     return code
 
@@ -85,7 +85,7 @@ def reset_password_with_code(db: Session, email: str, code: str, new_password: s
         return False
     if user.reset_code != code:
         return False
-    if user.reset_code_expires_at is None or datetime.now(timezone.utc) > user.reset_code_expires_at:
+    if user.reset_code_expires_at is None or datetime.now(timezone.utc).replace(tzinfo=None) > user.reset_code_expires_at:
         return False
     user.password_hash = hash_password(new_password)
     user.reset_code = None

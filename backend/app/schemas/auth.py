@@ -27,6 +27,22 @@ class ChangePasswordRequest(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: str
+    verification_token: str
+
+
+class CaptchaGenerateResponse(BaseModel):
+    captcha_token: str
+
+
+class CaptchaVerifyRequest(BaseModel):
+    captcha_token: str
+    user_x: int = Field(ge=0, le=300)
+
+
+class CaptchaVerifyResponse(BaseModel):
+    success: bool
+    verification_token: str | None = None
+    message: str = ""
 
 
 class ResetPasswordRequest(BaseModel):

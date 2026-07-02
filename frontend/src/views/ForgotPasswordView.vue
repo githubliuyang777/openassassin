@@ -32,6 +32,8 @@
         <n-button text @click="router.push('/login')">返回登录</n-button>
       </div>
     </n-card>
+
+    <SliderCaptcha v-model:visible="showCaptcha" @verified="onCaptchaVerified" />
   </n-layout>
 </template>
 
@@ -41,12 +43,16 @@ import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { NLayout, NCard, NForm, NFormItem, NInput, NButton, useMessage } from 'naive-ui'
 
+import SliderCaptcha from '@/components/SliderCaptcha.vue'
+
 const router = useRouter()
 const message = useMessage()
 
 const step = ref(1)
 const sending = ref(false)
 const resetting = ref(false)
+const showCaptcha = ref(false)
+const verificationToken = ref('')
 
 const emailForm = ref({ email: '' })
 const emailFormRef = ref()
@@ -70,9 +76,21 @@ const resetRules = {
 async function handleSendCode() {
   const valid = await emailFormRef.value?.validate().catch(() => false)
   if (!valid) return
+  showCaptcha.value = true
+}
+
+function onCaptchaVerified(token: string) {
+  verificationToken.value = token
+  sendResetCodeEmail()
+}
+
+async function sendResetCodeEmail() {
   sending.value = true
   try {
-    const resp = await axios.post('/api/v1/auth/forgot-password', { email: emailForm.value.email })
+    const resp = await axios.post('/api/v1/auth/forgot-password', {
+      email: emailForm.value.email,
+      verification_token: verificationToken.value,
+    })
     message.success(resp.data.message || '验证码已发送')
     step.value = 2
   } catch (e: any) {

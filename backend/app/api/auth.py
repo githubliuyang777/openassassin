@@ -7,7 +7,9 @@ from app.schemas.auth import (
     LoginRequest, TokenResponse, UserInfo,
     ChangePasswordRequest, ForgotPasswordRequest, ResetPasswordRequest,
     UpdateEmailRequest,
+    CaptchaGenerateResponse, CaptchaVerifyRequest, CaptchaVerifyResponse,
 )
+from app.services import captcha_service
 from app.services import auth_service
 from app.services.email_service import send_reset_code, EmailNotConfiguredError
 
@@ -44,8 +46,28 @@ def change_password(
     return {"message": "密码修改成功，请重新登录"}
 
 
+@router.post("/captcha/generate", response_model=CaptchaGenerateResponse)
+def generate_captcha():
+    """Generate a slider captcha challenge. No authentication required."""
+    result = captcha_service.generate_captcha()
+    return CaptchaGenerateResponse(**result)
+
+
+@router.post("/captcha/verify", response_model=CaptchaVerifyResponse)
+def verify_captcha(body: CaptchaVerifyRequest):
+    """Verify slider captcha position. Returns a one-time verification_token on success."""
+    ok, token, msg = captcha_service.verify_captcha(body.captcha_token, body.user_x)
+    return CaptchaVerifyResponse(success=ok, verification_token=token, message=msg)
+
+
 @router.post("/forgot-password")
 def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    if not captcha_service.validate_verification_token(body.verification_token):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="人机验证失败或已过期，请重新验证",
+        )
+
     try:
         code = auth_service.generate_reset_code(db, body.email)
     except Exception:
@@ -63,7 +85,6 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
             detail="邮件服务未配置，请联系管理员设置 SMTP 环境变量 (SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM)",
         )
     except Exception:
-        auth_service.generate_reset_code.cache_clear if hasattr(auth_service.generate_reset_code, 'cache_clear') else None
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="邮件发送失败，请检查 SMTP 配置")
 
     return {"message": "如该邮箱已注册，验证码已发送"}
