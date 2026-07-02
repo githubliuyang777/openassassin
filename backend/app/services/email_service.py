@@ -18,11 +18,13 @@ def _send_raw(to: str, subject: str, body: str) -> None:
     msg["From"] = settings.smtp_from or settings.smtp_username
     msg["To"] = to
 
-    if settings.smtp_use_tls:
+    if settings.smtp_port == 465:
+        server = smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=15)
+    elif settings.smtp_use_tls:
         server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15)
         server.starttls()
     else:
-        server = smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=15)
+        server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15)
 
     try:
         if settings.smtp_username:

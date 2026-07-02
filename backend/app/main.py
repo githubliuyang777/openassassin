@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.services.auth_service import get_or_create_admin
-from app.api import auth, scripts, credentials, executions
+from app.api import auth, scripts, credentials, executions, notifications
 
 
 def _migrate(table: str, columns: list[tuple[str, str]]):
@@ -83,6 +83,7 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(scripts.router, prefix="/api/v1")
 app.include_router(credentials.router, prefix="/api/v1")
 app.include_router(executions.router, prefix="/api/v1")
+app.include_router(notifications.router, prefix="/api/v1")
 
 
 @app.get("/api/health")
