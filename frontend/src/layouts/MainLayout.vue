@@ -60,6 +60,8 @@ import {
   TimeOutline,
   ChevronDownOutline,
   SettingsOutline,
+  DesktopOutline,
+  GlobeOutline,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -138,6 +140,14 @@ const menuOptions = [
   { label: '密钥管理', key: 'Credentials', icon: () => h(NIcon, null, () => h(KeyOutline)) },
   { label: '执行历史', key: 'Executions', icon: () => h(NIcon, null, () => h(TimeOutline)) },
   {
+    label: '监控',
+    key: 'Monitor',
+    icon: () => h(NIcon, null, () => h(DesktopOutline)),
+    children: [
+      { label: '域名证书', key: 'monitor-domains', icon: () => h(NIcon, null, () => h(GlobeOutline)) },
+    ],
+  },
+  {
     label: '系统',
     key: 'System',
     icon: () => h(NIcon, null, () => h(SettingsOutline)),
@@ -152,6 +162,7 @@ function activeKeyFromPath() {
   if (route.path.startsWith('/credentials')) return 'Credentials'
   if (route.path.startsWith('/executions')) return 'Executions'
   if (route.path.startsWith('/system')) return 'system-notifications'
+  if (route.path.startsWith('/monitor')) return 'monitor-domains'
   return 'Dashboard'
 }
 
@@ -160,6 +171,10 @@ const activeKey = computed(activeKeyFromPath)
 function handleMenu(key: string) {
   if (key === 'system-notifications') {
     router.push('/system/notifications')
+    return
+  }
+  if (key === 'monitor-domains') {
+    router.push('/monitor/domains')
     return
   }
   router.push(`/${key.toLowerCase()}`)

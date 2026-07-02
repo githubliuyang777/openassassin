@@ -30,6 +30,7 @@ const router = createRouter({
         { path: 'executions', name: 'Executions', component: () => import('@/views/ExecutionHistory.vue') },
         { path: 'system/notifications', name: 'Notifications', component: () => import('@/views/NotificationsView.vue') },
         { path: 'profile', name: 'Profile', component: () => import('@/views/ProfileView.vue') },
+        { path: 'monitor/domains', name: 'monitor-domains', component: () => import('@/views/DomainCertView.vue') },
       ],
     },
   ],
