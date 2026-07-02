@@ -4,7 +4,7 @@ import { api } from '@/api/client'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('token') || '')
-  const user = ref<{ id: number; username: string; role: string } | null>(null)
+  const user = ref<{ id: number; username: string; role: string; email: string } | null>(null)
 
   const isLoggedIn = computed(() => !!token.value)
 

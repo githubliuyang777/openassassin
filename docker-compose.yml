@@ -9,9 +9,19 @@ services:
       - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
       - MASTER_KEY=${MASTER_KEY:-change-me-master-key-32-bytes!!}
       - ADMIN_DEFAULT_PASSWORD=${ADMIN_DEFAULT_PASSWORD:-admin}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
       - DATABASE_URL=sqlite:///./data/ops.db
       - SANDBOX_IMAGE_SHELL=${SANDBOX_IMAGE_SHELL:-alpine:3.20}
       - SANDBOX_IMAGE_PYTHON=${SANDBOX_IMAGE_PYTHON:-python:3.12-alpine}
+      - ALERT_EMAIL=${ALERT_EMAIL:-}
+      - ALERT_BEFORE_DAYS=${ALERT_BEFORE_DAYS:-7}
+      - ALERT_CHECK_INTERVAL_MINUTES=${ALERT_CHECK_INTERVAL_MINUTES:-60}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
     volumes:
       - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock

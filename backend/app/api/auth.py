@@ -6,6 +6,7 @@ from app.middleware.auth_middleware import get_current_user
 from app.schemas.auth import (
     LoginRequest, TokenResponse, UserInfo,
     ChangePasswordRequest, ForgotPasswordRequest, ResetPasswordRequest,
+    UpdateEmailRequest,
 )
 from app.services import auth_service
 from app.services.email_service import send_reset_code, EmailNotConfiguredError
@@ -74,4 +75,19 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
     if not ok:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="验证码错误或已过期")
     return {"message": "密码重置成功"}
+
+
+@router.put("/me/email")
+def update_email(
+    body: UpdateEmailRequest,
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    from app.models.user import User
+    db_user = db.query(User).filter(User.id == user["id"]).first()
+    if not db_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
+    db_user.email = body.email
+    db.commit()
+    return {"message": "邮箱更新成功", "email": body.email}
 

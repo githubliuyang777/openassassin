@@ -29,7 +29,7 @@ describe('Auth Store', () => {
   it('login sets token and fetches user', async () => {
     const store = useAuthStore()
     const mockToken = 'jwt-token-123'
-    const mockUser = { id: 1, username: 'admin', role: 'admin' }
+    const mockUser = { id: 1, username: 'admin', role: 'admin', email: '' }
     ;(api.post as any).mockResolvedValue({ data: { access_token: mockToken } })
     ;(api.get as any).mockResolvedValue({ data: mockUser })
 
@@ -46,7 +46,7 @@ describe('Auth Store', () => {
   it('logout clears state', () => {
     const store = useAuthStore()
     store.token = 'some-token'
-    store.user = { id: 1, username: 'admin', role: 'admin' }
+    store.user = { id: 1, username: 'admin', role: 'admin', email: '' }
     localStorage.setItem('token', 'some-token')
 
     store.logout()
@@ -74,7 +74,7 @@ describe('Auth Store', () => {
   it('changePassword calls API and logs out', async () => {
     const store = useAuthStore()
     store.token = 'some-token'
-    store.user = { id: 1, username: 'admin', role: 'admin' }
+    store.user = { id: 1, username: 'admin', role: 'admin', email: '' }
     localStorage.setItem('token', 'some-token')
     ;(api.put as any).mockResolvedValue({ data: { message: 'ok' } })
 
