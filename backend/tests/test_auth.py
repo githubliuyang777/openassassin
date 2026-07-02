@@ -92,11 +92,140 @@ class TestChangePassword:
         assert resp.status_code == 422
 
 
+class TestCaptcha:
+    def test_generate_captcha_ok(self, client):
+        resp = client.post("/api/v1/auth/captcha/generate")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "captcha_token" in data
+        assert len(data["captcha_token"]) > 32
+
+    def test_verify_captcha_correct_position(self, client):
+        import app.services.captcha_service as cs
+        gen = client.post("/api/v1/auth/captcha/generate")
+        captcha_token = gen.json()["captcha_token"]
+        target_x = cs._captcha_store[captcha_token]["target_x"]
+
+        resp = client.post("/api/v1/auth/captcha/verify", json={
+            "captcha_token": captcha_token,
+            "user_x": target_x,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["verification_token"] is not None
+        assert "验证通过" in data["message"]
+
+    def test_verify_captcha_wrong_position(self, client):
+        import app.services.captcha_service as cs
+        gen = client.post("/api/v1/auth/captcha/generate")
+        captcha_token = gen.json()["captcha_token"]
+        target_x = cs._captcha_store[captcha_token]["target_x"]
+        wrong_x = target_x + 20  # far beyond tolerance
+
+        resp = client.post("/api/v1/auth/captcha/verify", json={
+            "captcha_token": captcha_token,
+            "user_x": wrong_x,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+        assert data["verification_token"] is None
+
+    def test_verify_captcha_invalid_token(self, client):
+        resp = client.post("/api/v1/auth/captcha/verify", json={
+            "captcha_token": "fake-token-that-does-not-exist",
+            "user_x": 150,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+
+    def test_verify_captcha_too_many_attempts(self, client):
+        import app.services.captcha_service as cs
+        gen = client.post("/api/v1/auth/captcha/generate")
+        captcha_token = gen.json()["captcha_token"]
+        target_x = cs._captcha_store[captcha_token]["target_x"]
+        wrong_x = target_x + 20
+
+        for _ in range(3):
+            client.post("/api/v1/auth/captcha/verify", json={
+                "captcha_token": captcha_token, "user_x": wrong_x,
+            })
+        resp = client.post("/api/v1/auth/captcha/verify", json={
+            "captcha_token": captcha_token, "user_x": wrong_x,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+        assert "次数过多" in data["message"]
+
+    def test_captcha_token_one_time_use(self, client):
+        import app.services.captcha_service as cs
+        gen = client.post("/api/v1/auth/captcha/generate")
+        captcha_token = gen.json()["captcha_token"]
+        target_x = cs._captcha_store[captcha_token]["target_x"]
+
+        client.post("/api/v1/auth/captcha/verify", json={
+            "captcha_token": captcha_token, "user_x": target_x,
+        })
+        # Second attempt with same token should fail
+        resp = client.post("/api/v1/auth/captcha/verify", json={
+            "captcha_token": captcha_token, "user_x": target_x,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is False
+
+    def test_user_x_out_of_range(self, client):
+        resp = client.post("/api/v1/auth/captcha/verify", json={
+            "captcha_token": "test",
+            "user_x": 999,
+        })
+        assert resp.status_code == 422
+
+
 class TestForgotPassword:
+    def _get_verification_token(self, client):
+        import app.services.captcha_service as cs
+        gen = client.post("/api/v1/auth/captcha/generate")
+        captcha_token = gen.json()["captcha_token"]
+        target_x = cs._captcha_store[captcha_token]["target_x"]
+        verify = client.post("/api/v1/auth/captcha/verify", json={
+            "captcha_token": captcha_token, "user_x": target_x,
+        })
+        return verify.json()["verification_token"]
+
     def test_forgot_password_no_smtp(self, client):
-        """Without SMTP configured, returns 503."""
+        token = self._get_verification_token(client)
+        resp = client.post("/api/v1/auth/forgot-password", json={
+            "email": "admin@test.com", "verification_token": token,
+        })
+        assert resp.status_code in (200, 503)
+
+    def test_forgot_password_missing_verification_token(self, client):
         resp = client.post("/api/v1/auth/forgot-password", json={"email": "admin@test.com"})
-        assert resp.status_code in (200, 503)  # 503 if no SMTP, 200 with "如该邮箱已注册"
+        assert resp.status_code == 422
+
+    def test_forgot_password_invalid_verification_token(self, client):
+        resp = client.post("/api/v1/auth/forgot-password", json={
+            "email": "admin@test.com", "verification_token": "fake-token",
+        })
+        assert resp.status_code == 400
+        assert "人机验证失败" in resp.json()["detail"]
+
+    def test_verification_token_one_time_use(self, client):
+        token = self._get_verification_token(client)
+        # First use should consume the token
+        client.post("/api/v1/auth/forgot-password", json={
+            "email": "admin@test.com", "verification_token": token,
+        })
+        # Second use should fail
+        resp = client.post("/api/v1/auth/forgot-password", json={
+            "email": "admin@test.com", "verification_token": token,
+        })
+        assert resp.status_code == 400
+        assert "人机验证失败" in resp.json()["detail"]
 
     def test_reset_password_no_code(self, client):
         resp = client.post("/api/v1/auth/reset-password", json={
