@@ -59,6 +59,7 @@ import {
   BarChartOutline,
   TimeOutline,
   ChevronDownOutline,
+  SettingsOutline,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -133,18 +134,31 @@ const menuOptions = [
   { label: '脚本管理', key: 'Scripts', icon: () => h(NIcon, null, () => h(CodeSlashOutline)) },
   { label: '密钥管理', key: 'Credentials', icon: () => h(NIcon, null, () => h(KeyOutline)) },
   { label: '执行历史', key: 'Executions', icon: () => h(NIcon, null, () => h(TimeOutline)) },
+  {
+    label: '系统',
+    key: 'System',
+    icon: () => h(NIcon, null, () => h(SettingsOutline)),
+    children: [
+      { label: '消息通知', key: 'system-notifications' },
+    ],
+  },
 ]
 
 function activeKeyFromPath() {
   if (route.path.startsWith('/scripts')) return 'Scripts'
   if (route.path.startsWith('/credentials')) return 'Credentials'
   if (route.path.startsWith('/executions')) return 'Executions'
+  if (route.path.startsWith('/system')) return 'system-notifications'
   return 'Dashboard'
 }
 
 const activeKey = computed(activeKeyFromPath)
 
 function handleMenu(key: string) {
+  if (key === 'system-notifications') {
+    router.push('/system/notifications')
+    return
+  }
   router.push(`/${key.toLowerCase()}`)
 }
 </script>
