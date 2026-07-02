@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.services.auth_service import get_or_create_admin
-from app.api import auth, scripts, credentials, executions, notifications, domains
+from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois
 
 
 def _migrate(table: str, columns: list[tuple[str, str]]):
@@ -50,6 +50,17 @@ def _migrate_domains_table():
     ])
 
 
+def _migrate_domain_whois_table():
+    _migrate("domain_whois", [
+        ("whois_expiry_date", "DATETIME"),
+        ("whois_creation_date", "DATETIME"),
+        ("whois_registrar", "VARCHAR(256)"),
+        ("whois_statuses", "TEXT"),
+        ("whois_nameservers", "TEXT"),
+        ("last_checked_at", "DATETIME"),
+    ])
+
+
 async def _alert_check_loop():
     """Background task: periodically check for expiring credentials and send alerts."""
     while True:
@@ -73,6 +84,7 @@ async def lifespan(app: FastAPI):
     _migrate_users_table()
     _migrate_credentials_table()
     _migrate_domains_table()
+    _migrate_domain_whois_table()
     db = SessionLocal()
     get_or_create_admin(db)
     db.close()
@@ -97,6 +109,7 @@ app.include_router(credentials.router, prefix="/api/v1")
 app.include_router(executions.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(domains.router, prefix="/api/v1")
+app.include_router(domain_whois.router, prefix="/api/v1")
 
 
 @app.get("/api/health")

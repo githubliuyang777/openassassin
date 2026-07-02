@@ -145,6 +145,7 @@ const menuOptions = [
     icon: () => h(NIcon, null, () => h(DesktopOutline)),
     children: [
       { label: '域名证书', key: 'monitor-domains', icon: () => h(NIcon, null, () => h(GlobeOutline)) },
+      { label: '域名', key: 'monitor-domains-whois', icon: () => h(NIcon, null, () => h(GlobeOutline)) },
     ],
   },
   {
@@ -162,6 +163,7 @@ function activeKeyFromPath() {
   if (route.path.startsWith('/credentials')) return 'Credentials'
   if (route.path.startsWith('/executions')) return 'Executions'
   if (route.path.startsWith('/system')) return 'system-notifications'
+  if (route.path.startsWith('/monitor/domains-whois')) return 'monitor-domains-whois'
   if (route.path.startsWith('/monitor')) return 'monitor-domains'
   return 'Dashboard'
 }
@@ -175,6 +177,10 @@ function handleMenu(key: string) {
   }
   if (key === 'monitor-domains') {
     router.push('/monitor/domains')
+    return
+  }
+  if (key === 'monitor-domains-whois') {
+    router.push('/monitor/domains-whois')
     return
   }
   router.push(`/${key.toLowerCase()}`)

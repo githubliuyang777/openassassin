@@ -31,6 +31,7 @@ const router = createRouter({
         { path: 'system/notifications', name: 'Notifications', component: () => import('@/views/NotificationsView.vue') },
         { path: 'profile', name: 'Profile', component: () => import('@/views/ProfileView.vue') },
         { path: 'monitor/domains', name: 'monitor-domains', component: () => import('@/views/DomainCertView.vue') },
+        { path: 'monitor/domains-whois', name: 'monitor-domains-whois', component: () => import('@/views/DomainWhoisView.vue') },
       ],
     },
   ],
