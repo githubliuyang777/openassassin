@@ -36,14 +36,13 @@
 </template>
 
 <script setup lang="ts">
-import { h, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import {
   NButton, NCard, NDescriptions, NDescriptionsItem, NTag,
-  NForm, NFormItem, NInput, NAlert, NH2, NSpin, useMessage,
+  NForm, NFormItem, NInput, NAlert, NH2, NSpin,
 } from 'naive-ui'
 import { getSmtpStatus, sendTestEmail } from '@/api/notifications'
 
-const message = useMessage()
 const formRef = ref()
 const sending = ref(false)
 const smtp = ref<any>(null)
