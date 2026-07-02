@@ -10,6 +10,7 @@ class CredentialCreate(BaseModel):
     description: str = ""
     type: str = "generic"
     expires_at: Optional[datetime] = None
+    alert_enabled: bool = True
 
 
 class CredentialUpdate(BaseModel):

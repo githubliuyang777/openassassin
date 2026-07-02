@@ -86,6 +86,7 @@ def create_credential(
         description=data.description,
         type=data.type,
         expires_at=expires_at,
+        alert_enabled=data.alert_enabled,
     )
     db.add(cred)
     db.commit()
