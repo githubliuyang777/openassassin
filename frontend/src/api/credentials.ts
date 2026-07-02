@@ -22,7 +22,7 @@ export function fetchCredentials() {
 
 export function createCredential(data: {
   name: string; key: string; value: string; description: string
-  type?: string; expires_at?: string | null
+  type?: string; expires_at?: string | null; alert_enabled?: boolean
 }) {
   return api.post('/credentials', data)
 }
@@ -35,6 +35,10 @@ export function updateCredential(id: number, data: {
   description?: string; type?: string; expires_at?: string | null; alert_enabled?: boolean
 }) {
   return api.put<Credential>(`/credentials/${id}`, data)
+}
+
+export function toggleCredentialAlert(id: number, alertEnabled: boolean) {
+  return api.put<Credential>(`/credentials/${id}`, { alert_enabled: alertEnabled })
 }
 
 export function deleteCredential(id: number) {

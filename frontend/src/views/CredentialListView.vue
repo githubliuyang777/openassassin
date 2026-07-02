@@ -39,6 +39,14 @@
             </n-button>
           </n-space>
         </n-form-item>
+        <n-form-item path="alert_enabled" label="到期告警通知">
+          <n-space align="center">
+            <n-switch v-model:value="createForm.alert_enabled" />
+            <n-text depth="3" style="font-size:12px">
+              {{ createForm.alert_enabled ? '到期前 7 天邮件通知' : '不通知' }}
+            </n-text>
+          </n-space>
+        </n-form-item>
         <n-form-item path="description" label="描述">
           <n-input v-model:value="createForm.description" placeholder="用途说明" />
         </n-form-item>
@@ -82,12 +90,12 @@ import { ref, h, computed, onMounted } from 'vue'
 import axios from 'axios'
 import {
   NH3, NSpace, NButton, NIcon, NDataTable, NModal, NForm, NFormItem,
-  NInput, NSelect, NDatePicker, NGrid, NGridItem,
+  NInput, NSelect, NDatePicker, NGrid, NGridItem, NSwitch,
   NDescriptions, NDescriptionsItem, NText, NTag, useMessage,
 } from 'naive-ui'
 import { AddOutline, AlertCircleOutline } from '@vicons/ionicons5'
 import {
-  fetchCredentials, createCredential, revealCredential, deleteCredential,
+  fetchCredentials, createCredential, revealCredential, deleteCredential, toggleCredentialAlert,
   type Credential, type CredentialReveal, CREDENTIAL_TYPES, getTypeLabel,
 } from '@/api/credentials'
 
@@ -109,6 +117,7 @@ const typeOptions = CREDENTIAL_TYPES.map(t => ({ label: t.label, value: t.value 
 const createForm = ref({
   name: '', key: '', value: '', description: '',
   type: 'generic', expires_at: null as string | null,
+  alert_enabled: true,
 })
 const createFormRef = ref()
 const createRules = {
@@ -164,6 +173,17 @@ const columns = computed(() => [
     },
   },
   { title: '描述', key: 'description', ellipsis: true, width: 120 },
+  {
+    title: '告警', key: 'alert_enabled', width: 70,
+    render: (r: any) => {
+      if (!r.expires_at) return h(NText, { depth: 3 }, () => '—')
+      return h(NSwitch, {
+        size: 'small',
+        value: r.alert_enabled,
+        'onUpdate:value': (val: boolean) => handleToggleAlert(r, val),
+      })
+    },
+  },
   { title: '更新时间', key: 'updated_at', width: 160 },
   {
     title: '操作', key: 'actions', width: 160,
@@ -173,6 +193,17 @@ const columns = computed(() => [
     ]),
   },
 ])
+
+async function handleToggleAlert(cred: Credential, enabled: boolean) {
+  try {
+    await toggleCredentialAlert(cred.id, enabled)
+    cred.alert_enabled = enabled
+    message.success(enabled ? '已开启告警通知' : '已关闭告警通知')
+  } catch (e: any) {
+    message.error(e.message || '操作失败')
+    load()
+  }
+}
 
 async function handleParseKubeconfig() {
   if (!createForm.value.value.trim()) {
@@ -213,7 +244,7 @@ async function handleCreate() {
     await createCredential(payload)
     message.success('创建成功')
     showCreate.value = false
-    createForm.value = { name: '', key: '', value: '', description: '', type: 'generic', expires_at: null }
+    createForm.value = { name: '', key: '', value: '', description: '', type: 'generic', expires_at: null, alert_enabled: true }
     load()
   } catch (e: any) {
     message.error(e.message)
