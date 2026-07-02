@@ -98,6 +98,7 @@ const pwdRules = {
 }
 
 const userMenuOptions = [
+  { label: '个人中心', key: 'profile' },
   { label: '修改密码', key: 'change-password' },
   { type: 'divider', key: 'd1' },
   { label: '退出登录', key: 'logout' },
@@ -110,6 +111,8 @@ function handleUserMenu(key: string) {
   } else if (key === 'change-password') {
     pwdForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' }
     showPasswordModal.value = true
+  } else if (key === 'profile') {
+    router.push('/profile')
   }
 }
 

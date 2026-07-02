@@ -47,8 +47,13 @@ def get_or_create_admin(db: Session) -> User:
             username="admin",
             password_hash=hash_password(settings.admin_default_password),
             role="admin",
+            email=settings.admin_email,
         )
         db.add(user)
+        db.commit()
+        db.refresh(user)
+    elif settings.admin_email and not user.email:
+        user.email = settings.admin_email
         db.commit()
         db.refresh(user)
     return user

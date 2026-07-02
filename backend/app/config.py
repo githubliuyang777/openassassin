@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     jwt_expire_hours: int = 24
     master_key: str = "change-me-master-key-32-bytes!!"
     admin_default_password: str = "admin"
+    admin_email: str = ""
     sandbox_image_shell: str = "alpine:3.20"
     sandbox_image_python: str = "python:3.12-alpine"
     sandbox_memory_limit: str = "256m"

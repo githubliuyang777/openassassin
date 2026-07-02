@@ -29,6 +29,7 @@ const router = createRouter({
         { path: 'credentials', name: 'Credentials', component: () => import('@/views/CredentialListView.vue') },
         { path: 'executions', name: 'Executions', component: () => import('@/views/ExecutionHistory.vue') },
         { path: 'system/notifications', name: 'Notifications', component: () => import('@/views/NotificationsView.vue') },
+        { path: 'profile', name: 'Profile', component: () => import('@/views/ProfileView.vue') },
       ],
     },
   ],
