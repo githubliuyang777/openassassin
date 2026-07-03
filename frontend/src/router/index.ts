@@ -31,6 +31,7 @@ const router = createRouter({
         { path: 'system/notifications', name: 'Notifications', component: () => import('@/views/NotificationsView.vue') },
         { path: 'profile', name: 'Profile', component: () => import('@/views/ProfileView.vue') },
         { path: 'monitor/domains', name: 'monitor-domains', component: () => import('@/views/DomainCertView.vue') },
+        { path: 'subscriptions', name: 'Subscriptions', component: () => import('@/views/SubscriptionView.vue') },
         { path: 'hosts', name: 'Hosts', component: () => import('@/views/HostListView.vue') },
         { path: 'hosts/:id/terminal', name: 'HostTerminal', component: () => import('@/views/HostTerminalView.vue') },
         { path: 'system/audit-logs', name: 'AuditLogs', component: () => import('@/views/AuditLogView.vue') },

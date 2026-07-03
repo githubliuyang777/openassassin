@@ -64,6 +64,7 @@ import {
   GlobeOutline,
   PulseOutline,
   ShieldCheckmarkOutline,
+  NotificationsOutline,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -142,6 +143,7 @@ const menuOptions = [
   { label: '密钥管理', key: 'Credentials', icon: () => h(NIcon, null, () => h(KeyOutline)) },
   { label: '执行历史', key: 'Executions', icon: () => h(NIcon, null, () => h(TimeOutline)) },
   { label: '主机运维', key: 'Hosts', icon: () => h(NIcon, null, () => h(ServerOutline)) },
+  { label: '订阅', key: 'Subscriptions', icon: () => h(NIcon, null, () => h(NotificationsOutline)) },
   {
     label: '监控',
     key: 'Monitor',
@@ -167,6 +169,7 @@ function activeKeyFromPath() {
   if (route.path.startsWith('/scripts')) return 'Scripts'
   if (route.path.startsWith('/credentials')) return 'Credentials'
   if (route.path.startsWith('/executions')) return 'Executions'
+  if (route.path.startsWith('/subscriptions')) return 'Subscriptions'
   if (route.path.startsWith('/hosts')) return 'Hosts'
   if (route.path.startsWith('/system/audit-logs')) return 'system-audit-logs'
   if (route.path.startsWith('/system/network-test')) return 'system-network-test'
