@@ -13,5 +13,6 @@ class Domain(Base):
     ssl_not_before = Column(DateTime, nullable=True)
     ssl_not_after = Column(DateTime, nullable=True)
     ssl_expired = Column(Boolean, default=False)
+    alert_enabled = Column(Boolean, default=True)
     last_checked_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=china_now)

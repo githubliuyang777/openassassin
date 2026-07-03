@@ -104,8 +104,11 @@ def batch_import(db: Session, entries: list[str]) -> dict:
 
 
 def list_domains(db: Session) -> list[dict]:
-    """List all domains with computed days_remaining."""
-    domains = db.query(Domain).order_by(Domain.id.desc()).all()
+    """List all domains with computed days_remaining, sorted by expiry ASC (NULLs last)."""
+    domains = db.query(Domain).order_by(
+        Domain.ssl_not_after.is_(None),
+        Domain.ssl_not_after.asc()
+    ).all()
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     results = []
     for d in domains:
@@ -118,6 +121,7 @@ def list_domains(db: Session) -> list[dict]:
             "ssl_not_before": d.ssl_not_before,
             "ssl_not_after": d.ssl_not_after,
             "ssl_expired": d.ssl_expired,
+            "alert_enabled": d.alert_enabled,
             "days_remaining": None,
             "last_checked_at": d.last_checked_at,
             "created_at": d.created_at,
@@ -147,6 +151,25 @@ def refresh_all_domains(db: Session) -> int:
         _update_cert(db, dom)
     db.commit()
     return len(domains)
+
+
+def toggle_alert(db: Session, domain_id: int) -> Domain | None:
+    dom = db.query(Domain).filter(Domain.id == domain_id).first()
+    if not dom:
+        return None
+    dom.alert_enabled = not dom.alert_enabled
+    db.commit()
+    db.refresh(dom)
+    return dom
+
+
+def batch_toggle_alert(db: Session, ids: list[int], enabled: bool) -> int:
+    query = db.query(Domain)
+    if ids:
+        query = query.filter(Domain.id.in_(ids))
+    count = query.update({Domain.alert_enabled: enabled}, synchronize_session=False)
+    db.commit()
+    return count
 
 
 def delete_domain(db: Session, domain_id: int) -> bool:

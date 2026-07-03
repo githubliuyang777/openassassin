@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime
 from app.database import Base, china_now
 
 
@@ -12,5 +12,6 @@ class DomainWhois(Base):
     whois_registrar = Column(String(256), nullable=True)
     whois_statuses = Column(Text, nullable=True)
     whois_nameservers = Column(Text, nullable=True)
+    alert_enabled = Column(Boolean, default=True)
     last_checked_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=china_now)

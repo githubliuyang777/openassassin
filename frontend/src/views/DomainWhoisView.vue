@@ -18,12 +18,22 @@
       </n-space>
     </div>
 
+    <div v-if="checkedRowKeys.length" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 8px 16px; background: #f0f9eb; border-radius: 8px; border: 1px solid #b9e6a0">
+      <span style="font-size: 13px; color: #3c6e1f">已选 {{ checkedRowKeys.length }} 项</span>
+      <n-button size="tiny" @click="checkedRowKeys = domains.map(d => d.id)">全选</n-button>
+      <n-button size="tiny" @click="checkedRowKeys = []">取消选择</n-button>
+      <n-button size="tiny" type="primary" @click="handleBatchToggleAlert(true)">启用告警</n-button>
+      <n-button size="tiny" type="warning" @click="handleBatchToggleAlert(false)">停用告警</n-button>
+    </div>
+
     <n-data-table
       :columns="columns"
       :data="domains"
       :loading="loading"
       :pagination="false"
       size="small"
+      :row-key="(row: any) => row.id"
+      v-model:checked-row-keys="checkedRowKeys"
     />
 
     <!-- Add Domain Modal -->
@@ -65,9 +75,9 @@
 
 <script setup lang="ts">
 import { h, ref, onMounted } from 'vue'
-import { useMessage, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NH3, useDialog } from 'naive-ui'
+import { useMessage, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NH3, NSwitch, useDialog } from 'naive-ui'
 import { AddOutline, CloudUploadOutline, RefreshOutline } from '@vicons/ionicons5'
-import { fetchWhoisDomains, addWhoisDomain, batchImportWhoisDomains, refreshAllWhoisDomains, refreshWhoisDomain, deleteWhoisDomain } from '@/api/domain-whois'
+import { fetchWhoisDomains, addWhoisDomain, batchImportWhoisDomains, refreshAllWhoisDomains, refreshWhoisDomain, deleteWhoisDomain, toggleWhoisDomainAlert, batchToggleWhoisDomainAlert } from '@/api/domain-whois'
 import type { DomainWhoisInfo } from '@/api/domain-whois'
 import type { DataTableColumn } from 'naive-ui'
 
@@ -87,6 +97,7 @@ const addRules = { domain: [{ required: true, message: '请输入域名' }] }
 
 const showImportModal = ref(false)
 const importText = ref('')
+const checkedRowKeys = ref<number[]>([])
 
 function statusTag(info: DomainWhoisInfo) {
   if (info.whois_expiry_date === null) {
@@ -117,11 +128,15 @@ function daysRemaining(info: DomainWhoisInfo) {
 }
 
 const columns: DataTableColumn<DomainWhoisInfo>[] = [
+  { type: 'selection' as const },
   { title: '域名', key: 'domain', width: 200, ellipsis: { tooltip: true } },
   { title: '注册商', key: 'whois_registrar', width: 160, ellipsis: { tooltip: true }, render: (r) => r.whois_registrar || '-' },
   { title: '创建时间', key: 'whois_creation_date', width: 170, render: (r) => formatTime(r.whois_creation_date) },
   { title: '到期时间', key: 'whois_expiry_date', width: 170, render: (r) => formatTime(r.whois_expiry_date) },
   { title: '剩余', key: 'days_remaining', width: 80, render: (r) => daysRemaining(r) },
+  { title: '告警', key: 'alert_enabled', width: 70,
+    render: (row) => h(NSwitch, { size: 'small', value: row.alert_enabled, onUpdateValue: () => handleToggleAlert(row) }),
+  },
   { title: '状态', key: 'status', width: 90, render: (r) => statusTag(r) },
   { title: '域名状态', key: 'whois_statuses', width: 140, ellipsis: { tooltip: true }, render: (r) => r.whois_statuses || '-' },
   { title: 'DNS服务器', key: 'whois_nameservers', width: 160, ellipsis: { tooltip: true }, render: (r) => r.whois_nameservers || '-' },
@@ -228,6 +243,26 @@ function handleDelete(row: DomainWhoisInfo) {
       }
     },
   })
+}
+
+async function handleToggleAlert(row: DomainWhoisInfo) {
+  try {
+    await toggleWhoisDomainAlert(row.id)
+    await loadDomains()
+  } catch (e: any) {
+    message.error(e.response?.data?.detail || '操作失败')
+  }
+}
+
+async function handleBatchToggleAlert(enabled: boolean) {
+  try {
+    const resp = await batchToggleWhoisDomainAlert(checkedRowKeys.value, enabled)
+    domains.value = resp.data.domains
+    checkedRowKeys.value = []
+    message.success(`已${enabled ? '启用' : '停用'} ${resp.data.updated} 个域名的告警`)
+  } catch (e: any) {
+    message.error(e.response?.data?.detail || '操作失败')
+  }
 }
 
 onMounted(loadDomains)

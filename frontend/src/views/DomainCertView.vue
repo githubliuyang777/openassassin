@@ -18,12 +18,22 @@
       </n-space>
     </div>
 
+    <div v-if="checkedRowKeys.length" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 8px 16px; background: #f0f9eb; border-radius: 8px; border: 1px solid #b9e6a0">
+      <span style="font-size: 13px; color: #3c6e1f">已选 {{ checkedRowKeys.length }} 项</span>
+      <n-button size="tiny" @click="checkedRowKeys = domains.map(d => d.id)">全选</n-button>
+      <n-button size="tiny" @click="checkedRowKeys = []">取消选择</n-button>
+      <n-button size="tiny" type="primary" @click="handleBatchToggleAlert(true)">启用告警</n-button>
+      <n-button size="tiny" type="warning" @click="handleBatchToggleAlert(false)">停用告警</n-button>
+    </div>
+
     <n-data-table
       :columns="columns"
       :data="domains"
       :loading="loading"
       :pagination="false"
       size="small"
+      :row-key="(row: any) => row.id"
+      v-model:checked-row-keys="checkedRowKeys"
     />
 
     <!-- Add Domain Modal -->
@@ -68,9 +78,9 @@
 
 <script setup lang="ts">
 import { h, ref, onMounted, computed } from 'vue'
-import { useMessage, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NH3, useDialog } from 'naive-ui'
+import { useMessage, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NH3, NSwitch, useDialog } from 'naive-ui'
 import { AddOutline, CloudUploadOutline, RefreshOutline } from '@vicons/ionicons5'
-import { fetchDomains, addDomain, batchImportDomains, refreshAllDomains, refreshDomain, deleteDomain } from '@/api/domains'
+import { fetchDomains, addDomain, batchImportDomains, refreshAllDomains, refreshDomain, deleteDomain, toggleDomainAlert, batchToggleDomainAlert } from '@/api/domains'
 import type { DomainInfo } from '@/api/domains'
 import type { DataTableColumn } from 'naive-ui'
 
@@ -93,6 +103,7 @@ const addRules = {
 
 const showImportModal = ref(false)
 const importText = ref('')
+const checkedRowKeys = ref<number[]>([])
 
 function statusTag(info: DomainInfo) {
   if (info.ssl_not_after === null) {
@@ -123,6 +134,7 @@ function daysRemaining(info: DomainInfo) {
 }
 
 const columns: DataTableColumn<DomainInfo>[] = [
+  { type: 'selection' as const },
   { title: '域名', key: 'domain', width: 200, ellipsis: { tooltip: true } },
   { title: '端口', key: 'port', width: 70 },
   { title: '证书主题', key: 'ssl_subject', width: 200, ellipsis: { tooltip: true }, render: (r) => r.ssl_subject || '-' },
@@ -130,6 +142,9 @@ const columns: DataTableColumn<DomainInfo>[] = [
   { title: '生效时间', key: 'ssl_not_before', width: 170, render: (r) => formatTime(r.ssl_not_before) },
   { title: '过期时间', key: 'ssl_not_after', width: 170, render: (r) => formatTime(r.ssl_not_after) },
   { title: '剩余', key: 'days_remaining', width: 80, render: (r) => daysRemaining(r) },
+  { title: '告警', key: 'alert_enabled', width: 70,
+    render: (row) => h(NSwitch, { size: 'small', value: row.alert_enabled, onUpdateValue: () => handleToggleAlert(row) }),
+  },
   { title: '状态', key: 'ssl_expired', width: 90, render: (r) => statusTag(r) },
   { title: '检测时间', key: 'last_checked_at', width: 170, render: (r) => formatTime(r.last_checked_at) },
   {
@@ -234,6 +249,26 @@ function handleDelete(row: DomainInfo) {
       }
     },
   })
+}
+
+async function handleToggleAlert(row: DomainInfo) {
+  try {
+    await toggleDomainAlert(row.id)
+    await loadDomains()
+  } catch (e: any) {
+    message.error(e.response?.data?.detail || '操作失败')
+  }
+}
+
+async function handleBatchToggleAlert(enabled: boolean) {
+  try {
+    const resp = await batchToggleDomainAlert(checkedRowKeys.value, enabled)
+    domains.value = resp.data.domains
+    checkedRowKeys.value = []
+    message.success(`已${enabled ? '启用' : '停用'} ${resp.data.updated} 个域名的告警`)
+  } catch (e: any) {
+    message.error(e.response?.data?.detail || '操作失败')
+  }
 }
 
 onMounted(loadDomains)

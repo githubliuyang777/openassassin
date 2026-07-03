@@ -83,7 +83,10 @@ def batch_import(db: Session, entries: list[str]) -> dict:
 
 
 def list_domains(db: Session) -> list[dict]:
-    domains = db.query(DomainWhois).order_by(DomainWhois.id.desc()).all()
+    domains = db.query(DomainWhois).order_by(
+        DomainWhois.whois_expiry_date.is_(None),
+        DomainWhois.whois_expiry_date.asc()
+    ).all()
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     results = []
     for d in domains:
@@ -95,6 +98,7 @@ def list_domains(db: Session) -> list[dict]:
             "whois_registrar": d.whois_registrar,
             "whois_statuses": d.whois_statuses,
             "whois_nameservers": d.whois_nameservers,
+            "alert_enabled": d.alert_enabled,
             "days_remaining": None,
             "last_checked_at": d.last_checked_at,
             "created_at": d.created_at,
@@ -121,6 +125,25 @@ def refresh_all_domains(db: Session) -> int:
         _update_whois(db, dom)
     db.commit()
     return len(domains)
+
+
+def toggle_alert(db: Session, domain_id: int) -> DomainWhois | None:
+    dom = db.query(DomainWhois).filter(DomainWhois.id == domain_id).first()
+    if not dom:
+        return None
+    dom.alert_enabled = not dom.alert_enabled
+    db.commit()
+    db.refresh(dom)
+    return dom
+
+
+def batch_toggle_alert(db: Session, ids: list[int], enabled: bool) -> int:
+    query = db.query(DomainWhois)
+    if ids:
+        query = query.filter(DomainWhois.id.in_(ids))
+    count = query.update({DomainWhois.alert_enabled: enabled}, synchronize_session=False)
+    db.commit()
+    return count
 
 
 def delete_domain(db: Session, domain_id: int) -> bool:
