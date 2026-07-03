@@ -53,6 +53,7 @@ infra-ops/
 - 设计必须包含以下内容：
   - API 端点设计（路径、方法、请求/响应结构）
   - 数据模型变更（表结构、字段、迁移策略）
+    - **数据库字段变更必须考虑存量数据兼容性**：新增字段必须有合理的默认值，确保旧数据在代码更新后能正常读取和展示；不允许出现存量数据在新字段上为 NULL 且业务逻辑未处理 NULL 的情况
   - 前端组件树和交互流程
   - 边界条件和异常处理策略
 - **必须在方案中纳入安全因素分析**：
@@ -106,6 +107,16 @@ infra-ops/
 ### 9. 合入 PR
 - 审核通过后执行 merge 合入主分支
 - 合入后验证主分支构建状态
+
+### 10. 更新 README.md (必须)
+- 新特性上线后，**必须同步更新项目 README.md**，反映当前系统的完整功能概览
+- 更新内容包括但不限于：
+  - 新增功能模块描述及访问路径
+  - 新增的菜单项和页面
+  - 新增的环境变量或配置项（如 `.env.example` 中有变更）
+  - 架构图的更新（如有）
+- 采用 PR 方式提交 README 更新，同样需要门禁检查
+- **不允许功能上线后 README 与实际功能不一致**
 
 ---
 
@@ -189,6 +200,24 @@ infra-ops/
 - API 调用走 `@/api/` 封装的函数，不在组件中直接调 axios
 - 页面级组件放 `views/`，可复用组件放 `components/`
 - 路由 meta: `{ guest: true }` 表示不需要登录
+
+### 数据库与迁移
+
+- 使用 SQLite，数据库文件位于 `data/ops.db`
+- 新增表通过 `Base.metadata.create_all()` 自动创建
+- 已有表新增字段通过 `main.py` 中的 `_migrate_xxx_table()` 函数以 `ALTER TABLE ADD COLUMN` 方式添加
+- **存量数据兼容性规则（必须遵守）**：
+  - 所有新增字段必须在模型中定义 Python 级默认值（如 `default=""`, `default=True`, `default=0`），确保新旧代码都能正确创建带默认值的行
+  - 数据库迁移 (`ALTER TABLE ADD COLUMN`) 必须指定 SQL 级 `DEFAULT`（如 `DEFAULT ''`, `DEFAULT 1`），确保已存在的旧行在新增列上填充默认值而不是 NULL
+  - 前端展示新增字段时必须处理可能的 NULL 值（`render: (r) => r.new_field || '-'`），防止页面因空值渲染异常
+  - 旧数据回填策略：若新字段的值需要从旧字段推导，必须在迁移后立即执行 UPDATE 回填逻辑
+  - 禁止删除或重命名已有字段（除非确认该字段在所有环境中均无数据依赖）
+- 迁移函数示例：
+  ```python
+  # 正确: Python 默认值 + SQL DEFAULT 双保险
+  # model: new_field = Column(String(64), default="")
+  # migrate: _migrate("table", [("new_field", "VARCHAR(64) DEFAULT ''")])
+  ```
 
 ### 测试
 - 后端测试: `backend/tests/test_<module>.py`，pytest + httpx

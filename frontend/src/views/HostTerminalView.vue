@@ -56,8 +56,10 @@ let fitAddon: FitAddon | null = null
 let ws: WebSocket | null = null
 let resizeObserver: ResizeObserver | null = null
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
+let userDisconnected = false
 
 function goBack() {
+  userDisconnected = true
   cleanup()
   router.push('/hosts')
 }
@@ -169,9 +171,14 @@ async function doConnect() {
 
   ws.onclose = (event) => {
     status.value = 'disconnected'
-    if (event.code === 4001) errorMsg.value = '认证失败，请重新登录'
-    else if (event.code === 4000) errorMsg.value = `SSH 连接失败: ${event.reason || '未知错误'}`
-    else if (event.code !== 1000) errorMsg.value = `连接关闭 (code: ${event.code})`
+    if (event.code === 4001) {
+      errorMsg.value = '认证失败，请重新登录'
+    } else if (event.code === 4000) {
+      errorMsg.value = `SSH 连接失败: ${event.reason || '未知错误'}`
+    } else if (!userDisconnected) {
+      // SSH session ended (user typed exit) — auto-redirect
+      router.push('/hosts')
+    }
   }
 
   terminal.onData((data) => {

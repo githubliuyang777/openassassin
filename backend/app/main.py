@@ -4,11 +4,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.middleware.audit_middleware import AuditMiddleware
 
 from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.services.auth_service import get_or_create_admin
-from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network
+from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs
 
 
 def _migrate(table: str, columns: list[tuple[str, str]]):
@@ -51,6 +52,15 @@ def _migrate_domains_table():
     ])
 
 
+def _migrate_audit_logs_table():
+    _migrate("audit_logs", [
+        ("user_agent", "VARCHAR(256) DEFAULT ''"),
+        ("status_code", "INTEGER DEFAULT 0"),
+        ("resource_type", "VARCHAR(64) DEFAULT ''"),
+        ("ip_location", "VARCHAR(128) DEFAULT ''"),
+    ])
+
+
 def _migrate_hosts_table():
     _migrate("hosts", [
         ("description", "VARCHAR(512) DEFAULT ''"),
@@ -68,6 +78,128 @@ def _migrate_domain_whois_table():
         ("alert_enabled", "BOOLEAN DEFAULT 1"),
         ("last_checked_at", "DATETIME"),
     ])
+
+
+def _repair_stale_data():
+    """Backfill NULL/empty fields for existing rows after schema changes."""
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        # Fill NULL booleans with their intended defaults
+        for table, col, default in [
+            ("domains", "alert_enabled", "1"),
+            ("domain_whois", "alert_enabled", "1"),
+            ("credentials", "alert_enabled", "1"),
+            ("credentials", "type", "'generic'"),
+        ]:
+            try:
+                conn.execute(text(f"UPDATE {table} SET {col} = {default} WHERE {col} IS NULL"))
+            except Exception:
+                pass
+
+        # Fill NULL text fields with empty string
+        for table, col in [
+            ("hosts", "description"),
+            ("hosts", "updated_at"),
+            ("audit_logs", "user_agent"),
+            ("audit_logs", "resource_type"),
+            ("audit_logs", "ip_location"),
+        ]:
+            try:
+                conn.execute(text(f"UPDATE {table} SET {col} = '' WHERE {col} IS NULL"))
+            except Exception:
+                pass
+
+        # Set updated_at from created_at where NULL (hosts)
+        try:
+            conn.execute(text(
+                "UPDATE hosts SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''"
+            ))
+        except Exception:
+            pass
+
+        # Backfill audit_logs.resource_type from resource path
+        _module_map = {
+            "hosts": "主机运维", "scripts": "脚本管理", "credentials": "密钥管理",
+            "executions": "执行历史", "domains": "域名证书", "whois-domains": "域名WHOIS",
+            "notifications": "消息通知", "network": "网络测试", "auth": "认证",
+        }
+        for module, label in _module_map.items():
+            try:
+                conn.execute(text(
+                    "UPDATE audit_logs SET resource_type = :label "
+                    "WHERE (resource_type IS NULL OR resource_type = '') "
+                    "AND resource LIKE :pat"
+                ), {"label": label, "pat": f"/api/v1/{module}%"})
+            except Exception:
+                pass
+
+        # Backfill audit_logs.ip_location for known IP types
+        _private_prefixes = [
+            "127.", "192.168.", "10.",
+            "172.16.", "172.17.", "172.18.", "172.19.", "172.20.",
+            "172.21.", "172.22.", "172.23.", "172.24.", "172.25.",
+            "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
+        ]
+        try:
+            conn.execute(text(
+                "UPDATE audit_logs SET ip_location = '本机' "
+                "WHERE (ip_location IS NULL OR ip_location = '') "
+                "AND (ip_address = '127.0.0.1' OR ip_address = 'localhost' OR ip_address = '::1')"
+            ))
+        except Exception:
+            pass
+        for prefix in _private_prefixes:
+            try:
+                conn.execute(text(
+                    "UPDATE audit_logs SET ip_location = '内网' "
+                    "WHERE (ip_location IS NULL OR ip_location = '') "
+                    "AND ip_address LIKE :pat"
+                ), {"pat": f"{prefix}%"})
+            except Exception:
+                pass
+        try:
+            conn.execute(text(
+                "UPDATE audit_logs SET ip_location = '未知' "
+                "WHERE (ip_location IS NULL OR ip_location = '') AND ip_address != '' AND ip_address != 'unknown'"
+            ))
+        except Exception:
+            pass
+
+        # Regenerate audit_logs.detail for old entries (format: "METHOD /api/v1/...")
+        _action_map = {
+            ("POST", "主机运维"): "新建主机", ("PUT", "主机运维"): "更新主机", ("DELETE", "主机运维"): "删除主机",
+            ("POST", "脚本管理"): "创建脚本", ("PUT", "脚本管理"): "更新脚本", ("DELETE", "脚本管理"): "删除脚本",
+            ("POST", "密钥管理"): "新建密钥", ("PUT", "密钥管理"): "更新密钥", ("DELETE", "密钥管理"): "删除密钥",
+            ("POST", "域名证书"): "添加域名", ("DELETE", "域名证书"): "删除域名",
+            ("POST", "域名WHOIS"): "添加域名", ("DELETE", "域名WHOIS"): "删除域名",
+            ("POST", "网络测试"): "TCP 连通性测试",
+            ("POST", "认证"): "用户登录", ("PUT", "认证"): "修改密码",
+        }
+        for (act, rt), detail in _action_map.items():
+            try:
+                conn.execute(text(
+                    "UPDATE audit_logs SET detail = :detail "
+                    "WHERE resource_type = :rt AND action = :act "
+                    "AND (detail LIKE '/api/v1/%' OR detail LIKE 'POST /%' OR "
+                    "    detail LIKE 'PUT /%' OR detail LIKE 'DELETE /%' OR detail LIKE 'PATCH /%')"
+                ), {"detail": detail, "rt": rt, "act": act})
+            except Exception:
+                pass
+
+
+async def _audit_cleanup_loop():
+    """Background task: periodically delete audit logs older than retention period."""
+    while True:
+        await asyncio.sleep(3600)
+        try:
+            from app.services.audit_service import cleanup_old_logs
+            db = SessionLocal()
+            try:
+                cleanup_old_logs(db)
+            finally:
+                db.close()
+        except Exception:
+            pass
 
 
 async def _alert_check_loop():
@@ -95,12 +227,16 @@ async def lifespan(app: FastAPI):
     _migrate_domains_table()
     _migrate_domain_whois_table()
     _migrate_hosts_table()
+    _migrate_audit_logs_table()
+    _repair_stale_data()
     db = SessionLocal()
     get_or_create_admin(db)
     db.close()
     task = asyncio.create_task(_alert_check_loop())
+    cleanup_task = asyncio.create_task(_audit_cleanup_loop())
     yield
     task.cancel()
+    cleanup_task.cancel()
 
 
 app = FastAPI(title="Ops Platform", version="0.1.0", lifespan=lifespan)
@@ -112,6 +248,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(AuditMiddleware)
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(scripts.router, prefix="/api/v1")
@@ -122,6 +259,7 @@ app.include_router(domains.router, prefix="/api/v1")
 app.include_router(domain_whois.router, prefix="/api/v1")
 app.include_router(hosts.router, prefix="/api/v1")
 app.include_router(network.router, prefix="/api/v1")
+app.include_router(audit_logs.router, prefix="/api/v1")
 
 
 @app.get("/api/health")

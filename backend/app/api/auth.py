@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
+from app.middleware.audit_middleware import _get_client_ip
 from app.schemas.auth import (
     LoginRequest, TokenResponse, UserInfo,
     ChangePasswordRequest, ForgotPasswordRequest, ResetPasswordRequest,
@@ -17,12 +18,37 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(body: LoginRequest, db: Session = Depends(get_db)):
+def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     user = auth_service.authenticate(db, body.username, body.password)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
     token = auth_service.create_token(user.id, user.username, user.role)
+
+    try:
+        from app.services.audit_service import create_log
+        create_log(db, user_id=user.id, username=user.username,
+                   action="POST", resource="/api/v1/auth/login",
+                   resource_type="认证", detail="用户登录",
+                   ip_address=_get_client_ip(request),
+                   user_agent=request.headers.get("User-Agent", ""))
+    except Exception:
+        pass
+
     return TokenResponse(access_token=token)
+
+
+@router.post("/logout")
+def logout(request: Request, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        from app.services.audit_service import create_log
+        create_log(db, user_id=user["id"], username=user["username"],
+                   action="POST", resource="/api/v1/auth/logout",
+                   resource_type="认证", detail="用户登出",
+                   ip_address=_get_client_ip(request),
+                   user_agent=request.headers.get("User-Agent", ""))
+    except Exception:
+        pass
+    return {"message": "已登出"}
 
 
 @router.get("/me", response_model=UserInfo)

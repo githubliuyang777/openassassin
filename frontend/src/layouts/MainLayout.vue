@@ -63,6 +63,7 @@ import {
   DesktopOutline,
   GlobeOutline,
   PulseOutline,
+  ShieldCheckmarkOutline,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -107,9 +108,9 @@ const userMenuOptions = [
   { label: '退出登录', key: 'logout' },
 ]
 
-function handleUserMenu(key: string) {
+async function handleUserMenu(key: string) {
   if (key === 'logout') {
-    auth.logout()
+    await auth.logout()
     router.push('/login')
   } else if (key === 'change-password') {
     pwdForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' }
@@ -157,6 +158,7 @@ const menuOptions = [
     children: [
       { label: '消息通知', key: 'system-notifications' },
       { label: '网络测试', key: 'system-network-test', icon: () => h(NIcon, null, () => h(PulseOutline)) },
+      { label: '审计日志', key: 'system-audit-logs', icon: () => h(NIcon, null, () => h(ShieldCheckmarkOutline)) },
     ],
   },
 ]
@@ -166,6 +168,7 @@ function activeKeyFromPath() {
   if (route.path.startsWith('/credentials')) return 'Credentials'
   if (route.path.startsWith('/executions')) return 'Executions'
   if (route.path.startsWith('/hosts')) return 'Hosts'
+  if (route.path.startsWith('/system/audit-logs')) return 'system-audit-logs'
   if (route.path.startsWith('/system/network-test')) return 'system-network-test'
   if (route.path.startsWith('/system')) return 'system-notifications'
   if (route.path.startsWith('/monitor/domains-whois')) return 'monitor-domains-whois'
@@ -178,6 +181,10 @@ const activeKey = computed(activeKeyFromPath)
 function handleMenu(key: string) {
   if (key === 'system-notifications') {
     router.push('/system/notifications')
+    return
+  }
+  if (key === 'system-audit-logs') {
+    router.push('/system/audit-logs')
     return
   }
   if (key === 'system-network-test') {
