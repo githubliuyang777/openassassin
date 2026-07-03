@@ -50,6 +50,8 @@ export const CREDENTIAL_TYPES = [
   { label: 'Kubeconfig', value: 'kubeconfig' },
   { label: 'TLS 证书', value: 'tls_cert' },
   { label: 'API Token', value: 'api_token' },
+  { label: 'SSH 密码', value: 'ssh_password' },
+  { label: 'SSH 私钥', value: 'ssh_key' },
 ] as const
 
 export function getTypeLabel(type: string): string {

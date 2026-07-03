@@ -62,6 +62,7 @@ import {
   SettingsOutline,
   DesktopOutline,
   GlobeOutline,
+  PulseOutline,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -139,6 +140,7 @@ const menuOptions = [
   { label: '脚本管理', key: 'Scripts', icon: () => h(NIcon, null, () => h(CodeSlashOutline)) },
   { label: '密钥管理', key: 'Credentials', icon: () => h(NIcon, null, () => h(KeyOutline)) },
   { label: '执行历史', key: 'Executions', icon: () => h(NIcon, null, () => h(TimeOutline)) },
+  { label: '主机运维', key: 'Hosts', icon: () => h(NIcon, null, () => h(ServerOutline)) },
   {
     label: '监控',
     key: 'Monitor',
@@ -154,6 +156,7 @@ const menuOptions = [
     icon: () => h(NIcon, null, () => h(SettingsOutline)),
     children: [
       { label: '消息通知', key: 'system-notifications' },
+      { label: '网络测试', key: 'system-network-test', icon: () => h(NIcon, null, () => h(PulseOutline)) },
     ],
   },
 ]
@@ -162,6 +165,8 @@ function activeKeyFromPath() {
   if (route.path.startsWith('/scripts')) return 'Scripts'
   if (route.path.startsWith('/credentials')) return 'Credentials'
   if (route.path.startsWith('/executions')) return 'Executions'
+  if (route.path.startsWith('/hosts')) return 'Hosts'
+  if (route.path.startsWith('/system/network-test')) return 'system-network-test'
   if (route.path.startsWith('/system')) return 'system-notifications'
   if (route.path.startsWith('/monitor/domains-whois')) return 'monitor-domains-whois'
   if (route.path.startsWith('/monitor')) return 'monitor-domains'
@@ -173,6 +178,10 @@ const activeKey = computed(activeKeyFromPath)
 function handleMenu(key: string) {
   if (key === 'system-notifications') {
     router.push('/system/notifications')
+    return
+  }
+  if (key === 'system-network-test') {
+    router.push('/system/network-test')
     return
   }
   if (key === 'monitor-domains') {

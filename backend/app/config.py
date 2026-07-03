@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     alert_email: str = ""
     alert_before_days: int = 7
     alert_check_interval_minutes: int = 60
+    # SSH / bastion host
+    ssh_connect_timeout: int = 10
+    ssh_terminal_idle_timeout: int = 3600
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
