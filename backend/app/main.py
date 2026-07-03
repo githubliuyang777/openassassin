@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.services.auth_service import get_or_create_admin
-from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois
+from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network
 
 
 def _migrate(table: str, columns: list[tuple[str, str]]):
@@ -51,6 +51,13 @@ def _migrate_domains_table():
     ])
 
 
+def _migrate_hosts_table():
+    _migrate("hosts", [
+        ("description", "VARCHAR(512) DEFAULT ''"),
+        ("updated_at", "DATETIME"),
+    ])
+
+
 def _migrate_domain_whois_table():
     _migrate("domain_whois", [
         ("whois_expiry_date", "DATETIME"),
@@ -87,6 +94,7 @@ async def lifespan(app: FastAPI):
     _migrate_credentials_table()
     _migrate_domains_table()
     _migrate_domain_whois_table()
+    _migrate_hosts_table()
     db = SessionLocal()
     get_or_create_admin(db)
     db.close()
@@ -112,6 +120,8 @@ app.include_router(executions.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(domains.router, prefix="/api/v1")
 app.include_router(domain_whois.router, prefix="/api/v1")
+app.include_router(hosts.router, prefix="/api/v1")
+app.include_router(network.router, prefix="/api/v1")
 
 
 @app.get("/api/health")
