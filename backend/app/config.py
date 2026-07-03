@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     ssh_connect_timeout: int = 10
     ssh_terminal_idle_timeout: int = 3600
     # audit log
+    audit_enabled: bool = True
     audit_ip_source: str = "forwarded"
     audit_log_retention_days: int = 180
 

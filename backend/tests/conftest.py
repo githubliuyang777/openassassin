@@ -1,7 +1,6 @@
 import os
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"
@@ -10,12 +9,13 @@ os.environ["MASTER_KEY"] = "test-master-key-needs-32-byte!"
 os.environ["SANDBOX_TMP_DIR"] = "/tmp/infra-ops-sandbox-test"
 os.environ["LOG_DIR"] = "/tmp/ops-test-logs"
 
-from app.database import Base, get_db
+os.environ["AUDIT_ENABLED"] = "false"
+
+from app.database import Base, get_db, engine
 from app.main import app
 from app.services.auth_service import create_token, hash_password
 from app.models.user import User
 
-engine = create_engine("sqlite:///./test.db", connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
