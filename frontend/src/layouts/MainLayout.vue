@@ -12,6 +12,11 @@
         </n-dropdown>
       </n-space>
     </n-layout-header>
+    <AlertBanner
+      v-show="!bannerDismissed && alerts.length > 0"
+      :alerts="alerts"
+      @dismiss="bannerDismissed = true"
+    />
     <n-layout has-sider style="flex: 1">
       <n-layout-sider bordered width="200">
         <n-menu :value="activeKey" :options="menuOptions" @update:value="handleMenu" />
@@ -45,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, ref } from 'vue'
+import { computed, h, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import {
@@ -66,6 +71,9 @@ import {
   ShieldCheckmarkOutline,
   NotificationsOutline,
 } from '@vicons/ionicons5'
+import AlertBanner from '@/components/AlertBanner.vue'
+import { fetchAlertSummary } from '@/api/alerts'
+import type { AlertItem } from '@/api/alerts'
 
 const router = useRouter()
 const route = useRoute()
@@ -204,4 +212,31 @@ function handleMenu(key: string) {
   }
   router.push(`/${key.toLowerCase()}`)
 }
+
+const alerts = ref<AlertItem[]>([])
+const bannerDismissed = ref(false)
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+async function loadAlerts() {
+  try {
+    const resp = await fetchAlertSummary()
+    const newData = resp.data
+    if (bannerDismissed.value && JSON.stringify(newData) !== JSON.stringify(alerts.value)) {
+      bannerDismissed.value = false
+    }
+    alerts.value = newData
+  } catch (_e) { /* ignore */ }
+}
+
+onMounted(() => {
+  loadAlerts()
+  pollTimer = setInterval(loadAlerts, 60000)
+})
+
+onUnmounted(() => {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+})
 </script>
