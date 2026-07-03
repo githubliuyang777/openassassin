@@ -43,13 +43,13 @@ describe('Auth Store', () => {
     expect(localStorage.getItem('token')).toBe(mockToken)
   })
 
-  it('logout clears state', () => {
+  it('logout clears state', async () => {
     const store = useAuthStore()
     store.token = 'some-token'
     store.user = { id: 1, username: 'admin', role: 'admin', email: '' }
     localStorage.setItem('token', 'some-token')
 
-    store.logout()
+    await store.logout()
 
     expect(store.token).toBe('')
     expect(store.user).toBeNull()

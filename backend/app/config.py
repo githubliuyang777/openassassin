@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # SSH / bastion host
     ssh_connect_timeout: int = 10
     ssh_terminal_idle_timeout: int = 3600
+    # audit log
+    audit_ip_source: str = "forwarded"
+    audit_log_retention_days: int = 180
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
