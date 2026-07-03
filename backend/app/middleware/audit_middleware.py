@@ -137,6 +137,9 @@ def _build_detail(method: str, module: str, resource_type: str, suffix: str) -> 
 
 class AuditMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
+        if not settings.audit_enabled:
+            return await call_next(request)
+
         if request.method in READ_METHODS:
             return await call_next(request)
 

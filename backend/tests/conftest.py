@@ -9,6 +9,8 @@ os.environ["MASTER_KEY"] = "test-master-key-needs-32-byte!"
 os.environ["SANDBOX_TMP_DIR"] = "/tmp/infra-ops-sandbox-test"
 os.environ["LOG_DIR"] = "/tmp/ops-test-logs"
 
+os.environ["AUDIT_ENABLED"] = "false"
+
 from app.database import Base, get_db, engine
 from app.main import app
 from app.services.auth_service import create_token, hash_password
