@@ -20,6 +20,7 @@ class DomainResponse(BaseModel):
     ssl_not_before: datetime | None = None
     ssl_not_after: datetime | None = None
     ssl_expired: bool = False
+    alert_enabled: bool = True
     days_remaining: int | None = None
     last_checked_at: datetime | None = None
     created_at: datetime | None = None

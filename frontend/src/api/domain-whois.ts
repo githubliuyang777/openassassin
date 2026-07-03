@@ -8,6 +8,7 @@ export interface DomainWhoisInfo {
   whois_registrar: string | null
   whois_statuses: string | null
   whois_nameservers: string | null
+  alert_enabled: boolean
   days_remaining: number | null
   last_checked_at: string | null
   created_at: string | null
@@ -31,6 +32,14 @@ export function refreshAllWhoisDomains(): Promise<{ data: { refreshed: number; d
 
 export function refreshWhoisDomain(id: number): Promise<{ data: DomainWhoisInfo }> {
   return api.post(`/whois-domains/${id}/refresh`)
+}
+
+export function toggleWhoisDomainAlert(id: number): Promise<{ data: DomainWhoisInfo }> {
+  return api.put(`/whois-domains/${id}/toggle-alert`)
+}
+
+export function batchToggleWhoisDomainAlert(ids: number[], enabled: boolean): Promise<{ data: { updated: number; domains: DomainWhoisInfo[] } }> {
+  return api.post('/whois-domains/batch-toggle-alert', { ids, enabled })
 }
 
 export function deleteWhoisDomain(id: number): Promise<void> {

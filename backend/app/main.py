@@ -46,6 +46,7 @@ def _migrate_domains_table():
         ("ssl_not_before", "DATETIME"),
         ("ssl_not_after", "DATETIME"),
         ("ssl_expired", "BOOLEAN DEFAULT 0"),
+        ("alert_enabled", "BOOLEAN DEFAULT 1"),
         ("last_checked_at", "DATETIME"),
     ])
 
@@ -57,6 +58,7 @@ def _migrate_domain_whois_table():
         ("whois_registrar", "VARCHAR(256)"),
         ("whois_statuses", "TEXT"),
         ("whois_nameservers", "TEXT"),
+        ("alert_enabled", "BOOLEAN DEFAULT 1"),
         ("last_checked_at", "DATETIME"),
     ])
 

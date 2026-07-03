@@ -18,6 +18,7 @@ class DomainWhoisResponse(BaseModel):
     whois_registrar: str | None = None
     whois_statuses: str | None = None
     whois_nameservers: str | None = None
+    alert_enabled: bool = True
     days_remaining: int | None = None
     last_checked_at: datetime | None = None
     created_at: datetime | None = None

@@ -63,6 +63,31 @@ def refresh_single(
     return _to_response(dom)
 
 
+@router.put("/{domain_id}/toggle-alert", response_model=DomainResponse)
+def toggle_alert(
+    domain_id: int,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    dom = domain_service.toggle_alert(db, domain_id)
+    if not dom:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="域名不存在")
+    return _to_response(dom)
+
+
+@router.post("/batch-toggle-alert")
+def batch_toggle_alert(
+    body: dict,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    ids = body.get("ids", [])
+    enabled = body.get("enabled", True)
+    count = domain_service.batch_toggle_alert(db, ids, enabled)
+    domains = domain_service.list_domains(db)
+    return {"updated": count, "domains": domains}
+
+
 @router.delete("/{domain_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_domain(
     domain_id: int,
@@ -87,6 +112,7 @@ def _to_response(dom) -> dict:
         "ssl_not_before": dom.ssl_not_before,
         "ssl_not_after": dom.ssl_not_after,
         "ssl_expired": dom.ssl_expired,
+        "alert_enabled": dom.alert_enabled,
         "days_remaining": None,
         "last_checked_at": dom.last_checked_at,
         "created_at": dom.created_at,
