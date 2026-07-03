@@ -9,7 +9,7 @@ from app.middleware.audit_middleware import AuditMiddleware
 from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.services.auth_service import get_or_create_admin
-from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs
+from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions
 
 
 def _migrate(table: str, columns: list[tuple[str, str]]):
@@ -65,6 +65,19 @@ def _migrate_hosts_table():
     _migrate("hosts", [
         ("description", "VARCHAR(512) DEFAULT ''"),
         ("updated_at", "DATETIME"),
+    ])
+
+
+def _migrate_subscriptions_table():
+    _migrate("subscriptions", [
+        ("last_version", "VARCHAR(64) DEFAULT ''"),
+        ("last_advisory_ghsa_id", "VARCHAR(32) DEFAULT ''"),
+        ("last_checked_at", "DATETIME"),
+        ("updated_at", "DATETIME"),
+    ])
+    _migrate("subscription_alerts", [
+        ("ref_id", "VARCHAR(64) DEFAULT ''"),
+        ("url", "VARCHAR(512) DEFAULT ''"),
     ])
 
 
@@ -187,6 +200,30 @@ def _repair_stale_data():
                 pass
 
 
+async def _subscription_check_loop():
+    """Background task: at 9am daily, check subscriptions for new releases/advisories."""
+    from datetime import datetime, timezone
+    while True:
+        await asyncio.sleep(settings.alert_check_interval_minutes * 60)
+        try:
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            if now.hour != 1:  # UTC 1:00 = CST 9:00
+                continue
+            from app.services.subscription_service import check_all_subscriptions
+            db = SessionLocal()
+            try:
+                today = now.strftime("%Y-%m-%d")
+                last_run = getattr(_subscription_check_loop, "_last_run_date", "")
+                if last_run == today:
+                    continue
+                check_all_subscriptions()
+                _subscription_check_loop._last_run_date = today
+            finally:
+                db.close()
+        except Exception:
+            pass
+
+
 async def _audit_cleanup_loop():
     """Background task: periodically delete audit logs older than retention period."""
     while True:
@@ -228,15 +265,18 @@ async def lifespan(app: FastAPI):
     _migrate_domain_whois_table()
     _migrate_hosts_table()
     _migrate_audit_logs_table()
+    _migrate_subscriptions_table()
     _repair_stale_data()
     db = SessionLocal()
     get_or_create_admin(db)
     db.close()
     task = asyncio.create_task(_alert_check_loop())
     cleanup_task = asyncio.create_task(_audit_cleanup_loop())
+    sub_task = asyncio.create_task(_subscription_check_loop())
     yield
     task.cancel()
     cleanup_task.cancel()
+    sub_task.cancel()
 
 
 app = FastAPI(title="Ops Platform", version="0.1.0", lifespan=lifespan)
@@ -260,6 +300,7 @@ app.include_router(domain_whois.router, prefix="/api/v1")
 app.include_router(hosts.router, prefix="/api/v1")
 app.include_router(network.router, prefix="/api/v1")
 app.include_router(audit_logs.router, prefix="/api/v1")
+app.include_router(subscriptions.router, prefix="/api/v1")
 
 
 @app.get("/api/health")
