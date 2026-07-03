@@ -121,7 +121,7 @@ class TestCaptcha:
         gen = client.post("/api/v1/auth/captcha/generate")
         captcha_token = gen.json()["captcha_token"]
         target_x = cs._captcha_store[captcha_token]["target_x"]
-        wrong_x = target_x + 50  # beyond CAPTCHA_TOLERANCE=25
+        wrong_x = target_x - 30  # offset 30 > CAPTCHA_TOLERANCE=25, stays in [0,300]
 
         resp = client.post("/api/v1/auth/captcha/verify", json={
             "captcha_token": captcha_token,
@@ -146,7 +146,7 @@ class TestCaptcha:
         gen = client.post("/api/v1/auth/captcha/generate")
         captcha_token = gen.json()["captcha_token"]
         target_x = cs._captcha_store[captcha_token]["target_x"]
-        wrong_x = target_x + 50  # beyond CAPTCHA_TOLERANCE=25
+        wrong_x = target_x - 30  # offset 30 > CAPTCHA_TOLERANCE=25, stays in [0,300]
 
         for _ in range(3):
             client.post("/api/v1/auth/captcha/verify", json={
