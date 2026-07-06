@@ -105,20 +105,23 @@ def get_all_alerts(db: Session) -> list[dict]:
                            "whois_expiry_date", "domain", _whois_message,
                            "/monitor/domains-whois", now, alerts)
 
-    # 4. Unread subscription alerts
+    # 4. Unread subscription alerts — grouped by subscription
     sub_alerts = (
-        db.query(SubscriptionAlert, Subscription.name)
+        db.query(SubscriptionAlert, Subscription.name, Subscription.id)
         .join(Subscription, SubscriptionAlert.subscription_id == Subscription.id)
         .filter(SubscriptionAlert.is_read.is_(False))
-        .order_by(SubscriptionAlert.occurred_at.desc())
         .all()
     )
-    for sa, sub_name in sub_alerts:
-        alert_type = "安全公告" if sa.alert_type == "advisory" else "新版本"
+    sub_counts: dict[tuple[int, str], int] = {}
+    for _sa, sub_name, sub_id in sub_alerts:
+        key = (sub_id, sub_name)
+        sub_counts[key] = sub_counts.get(key, 0) + 1
+
+    for (sub_id, sub_name), count in sub_counts.items():
         alerts.append({
-            "id": f"sub-{sa.id}",
+            "id": f"sub-{sub_id}",
             "source": SOURCE_SUBSCRIPTION,
-            "message": f"订阅 {sub_name}: [{alert_type}] {sa.title}",
+            "message": f"{sub_name} 有 {count} 条新动态",
             "severity": SEVERITY_INFO,
             "link": "/subscriptions",
             "days_remaining": 999,

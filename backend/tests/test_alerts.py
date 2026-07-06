@@ -170,11 +170,11 @@ class TestAlertsSubscription:
         resp = client.get("/api/v1/alerts/summary", headers=auth_headers)
         data = resp.json()
         assert len(data) == 1
-        assert data[0]["id"] == f"sub-{alert.id}"
+        assert data[0]["id"] == f"sub-{sub.id}"
         assert data[0]["source"] == "subscription"
         assert data[0]["severity"] == "info"
         assert "test-repo" in data[0]["message"]
-        assert "v2.0.0" in data[0]["message"]
+        assert "1 条新动态" in data[0]["message"]
 
     def test_read_subscription_alert_excluded(self, client, auth_headers, db_session):
         sub = Subscription(name="read-repo", repo_url="https://github.com/test/read-repo")

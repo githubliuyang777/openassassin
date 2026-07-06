@@ -18,10 +18,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/hosts", tags=["hosts"])
 
 
-async def _audit_terminal(username: str, host_id: int, hostname: str, detail: str):
+async def _audit_terminal(user_id: int, username: str, host_id: int, hostname: str, detail: str):
     try:
         from app.services.audit_service import create_log_async
         await create_log_async(
+            user_id=user_id,
             username=username,
             action="SSH",
             resource=f"/api/v1/hosts/{host_id}",
@@ -114,8 +115,9 @@ async def terminal(host_id: int, websocket: WebSocket, token: str = ""):
 
         ssh_client = None
         channel = None
+        audit_user_id = int(payload["sub"])
         audit_user = payload.get("username", "")
-        audit_host = conn_info["hostname"]
+        audit_host = conn_info["name"]
 
         try:
             ssh_client = ssh_service.create_ssh_client(
@@ -129,7 +131,7 @@ async def terminal(host_id: int, websocket: WebSocket, token: str = ""):
             await websocket.accept()
 
             # Audit: terminal connected
-            await _audit_terminal(audit_user, host_id, audit_host, "SSH 登录主机")
+            await _audit_terminal(audit_user_id, audit_user, host_id, audit_host, "SSH 登录主机")
         except Exception as e:
             logger.warning("SSH connection failed for host %s: %s", host_id, e)
             await websocket.close(code=4000, reason=f"SSH: {e}")
@@ -201,7 +203,7 @@ async def terminal(host_id: int, websocket: WebSocket, token: str = ""):
                 except Exception:
                     pass
             # Audit: terminal disconnected
-            await _audit_terminal(audit_user, host_id, audit_host, "退出主机")
+            await _audit_terminal(audit_user_id, audit_user, host_id, audit_host, "退出主机")
             # Explicitly close the WebSocket so the client gets onclose
             try:
                 await websocket.close(code=1000)
