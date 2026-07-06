@@ -69,3 +69,30 @@ export function fetchHistory(id: number, page = 1, pageSize = 20) {
     `/site-monitors/${id}/history`, { params: { page, page_size: pageSize } }
   )
 }
+
+export interface SlaRow {
+  name: string
+  target: string
+  monitor_type: string
+  sla: number | null
+  checks: number
+  down_count: number
+  period: string
+}
+
+export function fetchSlaSummary(period = 'monthly') {
+  return api.get<SlaRow[]>('/site-monitors/sla-summary', { params: { period } })
+}
+
+export function exportSla(period = 'monthly') {
+  return api.get('/site-monitors/export-sla', { params: { period }, responseType: 'blob' })
+}
+
+export interface HeatmapCell {
+  time: string
+  is_up: boolean
+}
+
+export function fetchHeatmap(id: number, days = 7) {
+  return api.get<HeatmapCell[]>('/site-monitors/' + id + '/heatmap', { params: { days } })
+}

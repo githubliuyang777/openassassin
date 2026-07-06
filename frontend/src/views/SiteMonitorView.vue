@@ -2,10 +2,15 @@
   <div>
     <n-space justify="space-between" style="margin-bottom: 16px">
       <n-h3 style="margin: 0">站点监控</n-h3>
-      <n-button type="primary" @click="openCreate">
-        <template #icon><n-icon><AddOutline /></n-icon></template>
-        新建监控
-      </n-button>
+      <n-space>
+        <n-dropdown trigger="click" :options="exportOptions" @select="handleExport">
+          <n-button><template #icon><n-icon><DownloadOutline /></n-icon></template>导出 SLA</n-button>
+        </n-dropdown>
+        <n-button type="primary" @click="openCreate">
+          <template #icon><n-icon><AddOutline /></n-icon></template>
+          新建监控
+        </n-button>
+      </n-space>
     </n-space>
 
     <n-data-table :columns="columns" :data="monitors" :loading="loading" :row-key="(r: SiteMonitor) => r.id" />
@@ -91,17 +96,40 @@
         />
       </n-drawer-content>
     </n-drawer>
+
+    <!-- Heatmap Modal -->
+    <n-modal v-model:show="showHeatmap" preset="card" :title="`${heatmapName} — 在线状态`" style="width: 680px">
+      <n-space vertical :size="12">
+        <n-radio-group v-model:value="heatmapModalDays" size="small" @update:value="loadHeatmapForModal">
+          <n-radio-button :value="1">1天</n-radio-button>
+          <n-radio-button :value="3">3天</n-radio-button>
+          <n-radio-button :value="7">1周</n-radio-button>
+          <n-radio-button :value="30">1月</n-radio-button>
+        </n-radio-group>
+        <div v-if="heatmapLoading" style="text-align: center; padding: 20px">加载中...</div>
+        <div v-else-if="heatmapCells.length === 0" style="color: #999; text-align: center; padding: 20px">暂无数据</div>
+        <div v-else class="heatmap-grid">
+          <span
+            v-for="(cell, i) in heatmapCells" :key="i"
+            class="heatmap-dot"
+            :style="`background: ${cell.is_up ? '#18a058' : '#d03050'}`"
+            :title="`${cell.time} — ${cell.is_up ? 'UP' : 'DOWN'}`"
+          />
+        </div>
+      </n-space>
+    </n-modal>
+
   </div>
 </template>
 
 <script setup lang="ts">
 import { h, ref, onMounted } from 'vue'
-import { useMessage, useDialog, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NSwitch, NH3, NGrid, NGridItem, NDrawer, NDrawerContent, NTable, NPagination } from 'naive-ui'
-import { AddOutline, PulseOutline } from '@vicons/ionicons5'
+import { useMessage, useDialog, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NSwitch, NH3, NGrid, NGridItem, NDrawer, NDrawerContent, NTable, NPagination, NDropdown, NRadioGroup, NRadioButton } from 'naive-ui'
+import { AddOutline, PulseOutline, DownloadOutline, GridOutline } from '@vicons/ionicons5'
 import {
-  fetchSiteMonitors, createSiteMonitor, updateSiteMonitor, deleteSiteMonitor, checkNow, fetchHistory,
+  fetchSiteMonitors, createSiteMonitor, updateSiteMonitor, deleteSiteMonitor, checkNow, fetchHistory, exportSla, fetchHeatmap,
 } from '@/api/site-monitors'
-import type { SiteMonitor, SiteMonitorCreate, SiteCheckResult } from '@/api/site-monitors'
+import type { SiteMonitor, SiteMonitorCreate, SiteCheckResult, HeatmapCell } from '@/api/site-monitors'
 
 const message = useMessage()
 const dialog = useDialog()
@@ -141,6 +169,51 @@ const historyLoading = ref(false)
 const historyPage = ref(1)
 const historyMonitorId = ref(0)
 const pageSize = 20
+
+// Heatmap modal state
+const showHeatmap = ref(false)
+const heatmapName = ref('')
+const heatmapCells = ref<HeatmapCell[]>([])
+const heatmapLoading = ref(false)
+const heatmapModalDays = ref(7)
+const heatmapMonitorId = ref(0)
+
+const exportOptions = [
+  { label: '月度 SLA (CSV)', key: 'monthly' },
+  { label: '年度 SLA (CSV)', key: 'annual' },
+]
+
+async function handleExport(key: string) {
+  try {
+    const resp = await exportSla(key)
+    const blob = new Blob([resp.data as BlobPart], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `sla-${key}-report.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    message.success('导出成功')
+  } catch (_e) { message.error('导出失败') }
+}
+
+async function loadHeatmapForModal() {
+  heatmapLoading.value = true
+  try {
+    const resp = await fetchHeatmap(heatmapMonitorId.value, heatmapModalDays.value)
+    heatmapCells.value = resp.data
+  } catch (_e) { /* ignore */ }
+  finally { heatmapLoading.value = false }
+}
+
+function openHeatmap(row: SiteMonitor) {
+  heatmapMonitorId.value = row.id
+  heatmapName.value = row.name
+  heatmapModalDays.value = 7
+  heatmapCells.value = []
+  showHeatmap.value = true
+  loadHeatmapForModal()
+}
 
 async function loadMonitors() {
   loading.value = true
@@ -253,6 +326,11 @@ const columns = [
   },
   { title: '最后检查', key: 'last_checked_at', width: 150, render: (r: SiteMonitor) => fmtTime(r.last_checked_at) },
   {
+    title: '在线状态', key: 'heatmap', width: 100,
+    render: (row: SiteMonitor) => h(NButton, { size: 'tiny', quaternary: true, onClick: () => openHeatmap(row) },
+      { icon: () => h(NIcon, null, () => h(GridOutline)), default: () => '热点图' }),
+  },
+  {
     title: '操作', key: 'actions', width: 200,
     render: (row: SiteMonitor) => h(NSpace, { size: 'small' }, () => [
       h(NButton, { size: 'tiny', type: 'primary', ghost: true, onClick: () => handleCheckNow(row) }, { icon: () => h(NIcon, null, () => h(PulseOutline)), default: () => '检查' }),
@@ -265,3 +343,20 @@ const columns = [
 
 onMounted(loadMonitors)
 </script>
+
+<style scoped>
+.heatmap-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 4px;
+}
+.heatmap-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+</style>

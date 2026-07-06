@@ -93,6 +93,12 @@ def _migrate_domain_whois_table():
     ])
 
 
+def _migrate_site_monitors_table():
+    _migrate("site_monitors", [
+        ("last_alerted_at", "DATETIME"),
+    ])
+
+
 def _repair_stale_data():
     """Backfill NULL/empty fields for existing rows after schema changes."""
     from sqlalchemy import text
@@ -277,6 +283,7 @@ async def lifespan(app: FastAPI):
     _migrate_hosts_table()
     _migrate_audit_logs_table()
     _migrate_subscriptions_table()
+    _migrate_site_monitors_table()
     _repair_stale_data()
     db = SessionLocal()
     get_or_create_admin(db)
