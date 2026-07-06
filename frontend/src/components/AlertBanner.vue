@@ -5,10 +5,7 @@
     :class="`severity-${maxSeverity}`"
   >
     <div class="alert-banner-inner">
-      <div class="marquee-track">
-        <span class="marquee-content">{{ joinedMessages }}</span>
-        <span class="marquee-content" aria-hidden="true">{{ joinedMessages }}</span>
-      </div>
+      <span class="banner-text">{{ joinedMessages }}</span>
     </div>
     <n-button text class="dismiss-btn" @click="$emit('dismiss')">
       <template #icon><n-icon><CloseOutline /></n-icon></template>
@@ -70,39 +67,22 @@ const maxSeverity = computed(() => {
 .alert-banner-inner {
   flex: 1;
   overflow: hidden;
-  white-space: nowrap;
+  text-align: center;
   min-width: 0;
 }
 
-.marquee-track {
-  display: inline-flex;
-  animation: marquee 30s linear infinite;
-}
-
-.marquee-content {
-  padding-right: 80px;
+.banner-text {
   font-size: 13px;
   line-height: 36px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
 }
 
 .dismiss-btn {
   flex-shrink: 0;
   color: inherit !important;
   margin: 0 4px;
-}
-
-@keyframes marquee {
-  0% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(-50%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .marquee-track {
-    animation: none;
-  }
 }
 </style>

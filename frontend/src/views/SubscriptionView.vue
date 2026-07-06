@@ -50,26 +50,28 @@
       </template>
     </n-modal>
 
-    <n-modal v-model:show="showAlerts" preset="card" title="新动态" style="width: 640px; max-height: 80vh">
+    <n-modal v-model:show="showAlerts" preset="card" title="新动态" style="width: 640px">
       <div v-if="alerts.length === 0" style="color: #999; text-align: center; padding: 24px 0">暂无新动态</div>
-      <n-list v-else>
-        <n-list-item v-for="a in alerts" :key="a.id">
-          <n-space vertical :size="4" style="width: 100%">
-            <n-space align="center">
-              <n-tag :type="a.alert_type === 'release' ? 'success' : 'error'" size="small">
-                {{ a.alert_type === 'release' ? '新版本' : '漏洞' }}
-              </n-tag>
-              <n-text strong>{{ a.title }}</n-text>
-              <n-tag v-if="a.is_read" size="small" type="default">已读</n-tag>
+      <div v-else style="max-height: 60vh; overflow-y: auto">
+        <n-list>
+          <n-list-item v-for="a in alerts" :key="a.id">
+            <n-space vertical :size="4" style="width: 100%">
+              <n-space align="center">
+                <n-tag :type="a.alert_type === 'release' ? 'success' : 'error'" size="small">
+                  {{ a.alert_type === 'release' ? '新版本' : '漏洞' }}
+                </n-tag>
+                <n-text strong>{{ a.title }}</n-text>
+                <n-tag v-if="a.is_read" size="small" type="default">已读</n-tag>
+              </n-space>
+              <n-text depth="2" style="font-size: 13px; white-space: pre-wrap">{{ a.summary || '暂无摘要' }}</n-text>
+              <n-space size="small">
+                <n-button v-if="a.url" text size="tiny" type="primary" @click="openUrl(a.url)">查看详情</n-button>
+                <n-button v-if="!a.is_read" text size="tiny" @click="handleMarkRead(a.id)">标记已读</n-button>
+              </n-space>
             </n-space>
-            <n-text depth="2" style="font-size: 13px; white-space: pre-wrap">{{ a.summary || '暂无摘要' }}</n-text>
-            <n-space size="small">
-              <n-button v-if="a.url" text size="tiny" type="primary" @click="openUrl(a.url)">查看详情</n-button>
-              <n-button v-if="!a.is_read" text size="tiny" @click="handleMarkRead(a.id)">标记已读</n-button>
-            </n-space>
-          </n-space>
-        </n-list-item>
-      </n-list>
+          </n-list-item>
+        </n-list>
+      </div>
     </n-modal>
   </div>
 </template>

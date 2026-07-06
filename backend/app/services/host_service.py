@@ -57,6 +57,7 @@ def get_ssh_connection_info(db: Session, host_id: int) -> dict:
         raise MissingCredentialError("凭证不存在或已被删除")
 
     return {
+        "name": host.name,
         "hostname": host.hostname,
         "port": host.port,
         "username": host.username,
