@@ -9,7 +9,7 @@ from app.middleware.audit_middleware import AuditMiddleware
 from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.services.auth_service import get_or_create_admin
-from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads
+from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors
 
 
 def _migrate(table: str, columns: list[tuple[str, str]]):
@@ -254,6 +254,17 @@ async def _alert_check_loop():
             pass
 
 
+async def _site_monitor_check_loop():
+    """Background task: periodically check all site monitors."""
+    while True:
+        await asyncio.sleep(30)
+        try:
+            from app.services.site_monitor_service import check_all_monitors
+            check_all_monitors()
+        except Exception:
+            pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     os.makedirs("data", exist_ok=True)
@@ -273,10 +284,12 @@ async def lifespan(app: FastAPI):
     task = asyncio.create_task(_alert_check_loop())
     cleanup_task = asyncio.create_task(_audit_cleanup_loop())
     sub_task = asyncio.create_task(_subscription_check_loop())
+    site_task = asyncio.create_task(_site_monitor_check_loop())
     yield
     task.cancel()
     cleanup_task.cancel()
     sub_task.cancel()
+    site_task.cancel()
 
 
 app = FastAPI(title="Ops Platform", version="0.1.0", lifespan=lifespan)
@@ -303,6 +316,7 @@ app.include_router(audit_logs.router, prefix="/api/v1")
 app.include_router(subscriptions.router, prefix="/api/v1")
 app.include_router(alerts.router, prefix="/api/v1")
 app.include_router(notepads.router, prefix="/api/v1")
+app.include_router(site_monitors.router, prefix="/api/v1")
 
 
 @app.get("/api/health")

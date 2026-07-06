@@ -7,6 +7,7 @@ from app.models.credential import Credential
 from app.models.domain import Domain
 from app.models.domain_whois import DomainWhois
 from app.models.subscription import SubscriptionAlert, Subscription
+from app.models.site_monitor import SiteMonitor
 from app.database import china_now
 
 SEVERITY_DANGER = "danger"
@@ -17,6 +18,7 @@ SOURCE_CREDENTIAL = "credential"
 SOURCE_DOMAIN_CERT = "domain_cert"
 SOURCE_DOMAIN_WHOIS = "domain_whois"
 SOURCE_SUBSCRIPTION = "subscription"
+SOURCE_SITE_MONITOR = "site_monitor"
 
 SEVERITY_ORDER = {SEVERITY_DANGER: 0, SEVERITY_WARNING: 1, SEVERITY_INFO: 2}
 
@@ -125,6 +127,22 @@ def get_all_alerts(db: Session) -> list[dict]:
             "severity": SEVERITY_INFO,
             "link": "/subscriptions",
             "days_remaining": 999,
+        })
+
+    # 5. Site monitors that are down
+    down_monitors = (
+        db.query(SiteMonitor)
+        .filter(SiteMonitor.is_up.is_(False), SiteMonitor.alert_enabled.is_(True))
+        .all()
+    )
+    for dm in down_monitors:
+        alerts.append({
+            "id": f"site-{dm.id}",
+            "source": SOURCE_SITE_MONITOR,
+            "message": f"站点 {dm.name} 不可达: {dm.target}",
+            "severity": SEVERITY_DANGER,
+            "link": "/monitor/site-monitor",
+            "days_remaining": 0,
         })
 
     # Sort: danger first, then warning by days_remaining ASC, then info
