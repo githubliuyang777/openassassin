@@ -37,6 +37,7 @@ const router = createRouter({
         { path: 'hosts/:id/terminal', name: 'HostTerminal', component: () => import('@/views/HostTerminalView.vue') },
         { path: 'system/audit-logs', name: 'AuditLogs', component: () => import('@/views/AuditLogView.vue') },
         { path: 'system/network-test', name: 'NetworkTest', component: () => import('@/views/NetworkTestView.vue') },
+        { path: 'monitor/site-monitor', name: 'monitor-site-monitor', component: () => import('@/views/SiteMonitorView.vue') },
         { path: 'monitor/domains-whois', name: 'monitor-domains-whois', component: () => import('@/views/DomainWhoisView.vue') },
       ],
     },

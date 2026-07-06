@@ -159,6 +159,7 @@ const menuOptions = [
     key: 'Monitor',
     icon: () => h(NIcon, null, () => h(DesktopOutline)),
     children: [
+      { label: '站点监控', key: 'monitor-site-monitor', icon: () => h(NIcon, null, () => h(PulseOutline)) },
       { label: '域名证书', key: 'monitor-domains', icon: () => h(NIcon, null, () => h(GlobeOutline)) },
       { label: '域名', key: 'monitor-domains-whois', icon: () => h(NIcon, null, () => h(GlobeOutline)) },
     ],
@@ -185,6 +186,7 @@ function activeKeyFromPath() {
   if (route.path.startsWith('/system/audit-logs')) return 'system-audit-logs'
   if (route.path.startsWith('/system/network-test')) return 'system-network-test'
   if (route.path.startsWith('/system')) return 'system-notifications'
+  if (route.path.startsWith('/monitor/site-monitor')) return 'monitor-site-monitor'
   if (route.path.startsWith('/monitor/domains-whois')) return 'monitor-domains-whois'
   if (route.path.startsWith('/monitor')) return 'monitor-domains'
   return 'Dashboard'
@@ -203,6 +205,10 @@ function handleMenu(key: string) {
   }
   if (key === 'system-network-test') {
     router.push('/system/network-test')
+    return
+  }
+  if (key === 'monitor-site-monitor') {
+    router.push('/monitor/site-monitor')
     return
   }
   if (key === 'monitor-domains') {
