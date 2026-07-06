@@ -136,12 +136,43 @@ def run_single_check(monitor: SiteMonitor) -> SiteCheckResult:
 
         if was_up and not ok:
             logger.info("Site %s (%s) went DOWN", monitor.name, monitor.target)
+            _send_down_alert(db, m or monitor, error)
         elif not was_up and ok:
             logger.info("Site %s (%s) recovered", monitor.name, monitor.target)
 
         return result
     finally:
         db.close()
+
+
+def _send_down_alert(db: Session, monitor: SiteMonitor, error: str | None) -> None:
+    from datetime import timedelta
+    from app.config import settings
+    if not settings.alert_email or not settings.smtp_host:
+        return
+    if not monitor.alert_enabled:
+        return
+    now = china_now()
+    if monitor.last_alerted_at and monitor.last_alerted_at > now - timedelta(hours=1):
+        return  # already alerted within 1 hour
+    try:
+        from app.services.email_service import send_email
+        subject = f"[Ops Platform] 站点不可达: {monitor.name}"
+        body = f"""站点监控告警
+
+名称: {monitor.name}
+目标: {monitor.target}
+类型: {monitor.monitor_type.upper()}
+错误: {error or '连接失败'}
+时间: {now.strftime('%Y-%m-%d %H:%M')} (北京时间)
+
+Ops Platform 站点监控
+"""
+        send_email(settings.alert_email, subject, body)
+        monitor.last_alerted_at = now
+        db.commit()
+    except Exception:
+        pass
 
 
 # ── Background check ───────────────────────────────────────────────────────────

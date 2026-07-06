@@ -18,6 +18,7 @@ class SiteMonitor(Base):
     is_up = Column(Boolean, default=True)
     last_checked_at = Column(DateTime, nullable=True)
     last_response_ms = Column(Float, nullable=True)
+    last_alerted_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=china_now)
     updated_at = Column(DateTime, default=china_now, onupdate=china_now)
 
