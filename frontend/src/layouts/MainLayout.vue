@@ -70,6 +70,7 @@ import {
   PulseOutline,
   ShieldCheckmarkOutline,
   NotificationsOutline,
+  DocumentTextOutline,
 } from '@vicons/ionicons5'
 import AlertBanner from '@/components/AlertBanner.vue'
 import { fetchAlertSummary } from '@/api/alerts'
@@ -151,6 +152,7 @@ const menuOptions = [
   { label: '密钥管理', key: 'Credentials', icon: () => h(NIcon, null, () => h(KeyOutline)) },
   { label: '执行历史', key: 'Executions', icon: () => h(NIcon, null, () => h(TimeOutline)) },
   { label: '主机运维', key: 'Hosts', icon: () => h(NIcon, null, () => h(ServerOutline)) },
+  { label: '记事本', key: 'Notepads', icon: () => h(NIcon, null, () => h(DocumentTextOutline)) },
   { label: '订阅', key: 'Subscriptions', icon: () => h(NIcon, null, () => h(NotificationsOutline)) },
   {
     label: '监控',
@@ -177,6 +179,7 @@ function activeKeyFromPath() {
   if (route.path.startsWith('/scripts')) return 'Scripts'
   if (route.path.startsWith('/credentials')) return 'Credentials'
   if (route.path.startsWith('/executions')) return 'Executions'
+  if (route.path.startsWith('/notepads')) return 'Notepads'
   if (route.path.startsWith('/subscriptions')) return 'Subscriptions'
   if (route.path.startsWith('/hosts')) return 'Hosts'
   if (route.path.startsWith('/system/audit-logs')) return 'system-audit-logs'
