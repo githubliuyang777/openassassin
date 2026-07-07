@@ -96,6 +96,7 @@ def _migrate_domain_whois_table():
 def _migrate_site_monitors_table():
     _migrate("site_monitors", [
         ("last_alerted_at", "DATETIME"),
+        ("group_name", "VARCHAR(64) DEFAULT ''"),
     ])
 
 

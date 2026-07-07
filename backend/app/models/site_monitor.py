@@ -8,6 +8,7 @@ class SiteMonitor(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(128), nullable=False)
     target = Column(String(512), nullable=False)
+    group_name = Column(String(64), default="")
     monitor_type = Column(String(8), nullable=False, default="http")
     http_method = Column(String(8), default="GET")
     expected_status_codes = Column(String(64), default="200")

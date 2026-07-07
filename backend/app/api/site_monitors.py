@@ -38,10 +38,19 @@ def export_sla(
 
 @router.get("", response_model=list[SiteMonitorResponse])
 def list_monitors(
+    group: str = Query(""),
     db: Session = Depends(get_db),
     _user: dict = Depends(get_current_user),
 ):
-    return site_monitor_service.list_monitors(db)
+    return site_monitor_service.list_monitors(db, group)
+
+
+@router.get("/groups")
+def list_groups(
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    return site_monitor_service.list_groups(db)
 
 
 @router.post("", response_model=SiteMonitorResponse, status_code=status.HTTP_201_CREATED)
