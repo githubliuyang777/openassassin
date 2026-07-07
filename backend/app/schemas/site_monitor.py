@@ -13,6 +13,7 @@ class SiteMonitorCreate(BaseModel):
     retries: int = Field(default=2, ge=0, le=10)
     check_interval: int = Field(default=300, ge=30)
     alert_enabled: bool = True
+    group_name: str = ""
 
 
 class SiteMonitorUpdate(BaseModel):
@@ -25,6 +26,7 @@ class SiteMonitorUpdate(BaseModel):
     retries: int | None = None
     check_interval: int | None = None
     alert_enabled: bool | None = None
+    group_name: str | None = None
 
 
 class SiteMonitorResponse(BaseModel):
@@ -38,6 +40,7 @@ class SiteMonitorResponse(BaseModel):
     retries: int
     check_interval: int
     alert_enabled: bool
+    group_name: str
     is_up: bool
     last_checked_at: datetime | None = None
     last_response_ms: float | None = None

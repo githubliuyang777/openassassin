@@ -11,6 +11,7 @@ export interface SiteMonitor {
   retries: number
   check_interval: number
   alert_enabled: boolean
+  group_name: string
   is_up: boolean
   last_checked_at: string | null
   last_response_ms: number | null
@@ -38,10 +39,15 @@ export interface SiteMonitorCreate {
   retries?: number
   check_interval?: number
   alert_enabled?: boolean
+  group_name?: string
 }
 
-export function fetchSiteMonitors() {
-  return api.get<SiteMonitor[]>('/site-monitors')
+export function fetchSiteMonitors(group = '') {
+  return api.get<SiteMonitor[]>('/site-monitors', { params: group ? { group } : {} })
+}
+
+export function fetchMonitorGroups() {
+  return api.get<string[]>('/site-monitors/groups')
 }
 
 export function fetchSiteMonitor(id: number) {

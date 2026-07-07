@@ -13,6 +13,18 @@
       </n-space>
     </n-space>
 
+    <n-space style="margin-bottom: 12px" align="center">
+      <n-text depth="3" style="font-size: 13px">分组:</n-text>
+      <n-select
+        v-model:value="selectedGroup"
+        :options="groupOptions"
+        placeholder="全部分组"
+        clearable
+        style="width: 180px"
+        @update:value="loadMonitors"
+      />
+    </n-space>
+
     <n-data-table :columns="columns" :data="monitors" :loading="loading" :row-key="(r: SiteMonitor) => r.id" />
 
     <!-- Create/Edit Modal -->
@@ -56,6 +68,16 @@
             </n-form-item>
           </n-grid-item>
         </n-grid>
+        <n-form-item path="group_name" label="分组">
+          <n-select
+            v-model:value="form.group_name"
+            :options="groupOptions"
+            placeholder="默认分组"
+            clearable
+            filterable
+            tag
+          />
+        </n-form-item>
         <n-form-item path="alert_enabled" label="告警通知">
           <n-switch v-model:value="form.alert_enabled" />
         </n-form-item>
@@ -123,11 +145,11 @@
 </template>
 
 <script setup lang="ts">
-import { h, ref, onMounted } from 'vue'
+import { h, ref, computed, onMounted } from 'vue'
 import { useMessage, useDialog, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NSwitch, NH3, NGrid, NGridItem, NDrawer, NDrawerContent, NTable, NPagination, NDropdown, NRadioGroup, NRadioButton } from 'naive-ui'
 import { AddOutline, PulseOutline, DownloadOutline, GridOutline } from '@vicons/ionicons5'
 import {
-  fetchSiteMonitors, createSiteMonitor, updateSiteMonitor, deleteSiteMonitor, checkNow, fetchHistory, exportSla, fetchHeatmap,
+  fetchSiteMonitors, createSiteMonitor, updateSiteMonitor, deleteSiteMonitor, checkNow, fetchHistory, exportSla, fetchHeatmap, fetchMonitorGroups,
 } from '@/api/site-monitors'
 import type { SiteMonitor, SiteMonitorCreate, SiteCheckResult, HeatmapCell } from '@/api/site-monitors'
 
@@ -143,6 +165,7 @@ const formRef = ref()
 const form = ref<SiteMonitorCreate>({
   name: '', target: '', monitor_type: 'http', http_method: 'GET',
   expected_status_codes: '200', timeout: 10, retries: 2, check_interval: 300, alert_enabled: true,
+  group_name: '',
 })
 
 const typeOptions = [{ label: 'HTTP(S)', value: 'http' }, { label: 'TCP', value: 'tcp' }]
@@ -177,6 +200,11 @@ const heatmapCells = ref<HeatmapCell[]>([])
 const heatmapLoading = ref(false)
 const heatmapModalDays = ref(7)
 const heatmapMonitorId = ref(0)
+
+// Groups
+const groups = ref<string[]>([])
+const selectedGroup = ref('')
+const groupOptions = computed(() => groups.value.map((g) => ({ label: g, value: g })))
 
 const exportOptions = [
   { label: '月度 SLA (CSV)', key: 'monthly' },
@@ -218,15 +246,17 @@ function openHeatmap(row: SiteMonitor) {
 async function loadMonitors() {
   loading.value = true
   try {
-    const resp = await fetchSiteMonitors()
+    const resp = await fetchSiteMonitors(selectedGroup.value)
     monitors.value = resp.data
+    const gResp = await fetchMonitorGroups()
+    groups.value = gResp.data
   } catch (_e) { /* ignore */ }
   finally { loading.value = false }
 }
 
 function openCreate() {
   editingId.value = null
-  form.value = { name: '', target: '', monitor_type: 'http', http_method: 'GET', expected_status_codes: '200', timeout: 10, retries: 2, check_interval: 300, alert_enabled: true }
+  form.value = { name: '', target: '', monitor_type: 'http', http_method: 'GET', expected_status_codes: '200', timeout: 10, retries: 2, check_interval: 300, alert_enabled: true, group_name: '' }
   showForm.value = true
 }
 
@@ -236,7 +266,7 @@ function openEdit(row: SiteMonitor) {
     name: row.name, target: row.target, monitor_type: row.monitor_type,
     http_method: row.http_method, expected_status_codes: row.expected_status_codes,
     timeout: row.timeout, retries: row.retries, check_interval: row.check_interval,
-    alert_enabled: row.alert_enabled,
+    alert_enabled: row.alert_enabled, group_name: row.group_name || '',
   }
   showForm.value = true
 }
@@ -306,9 +336,13 @@ function fmtTime(val: string | null) {
 }
 
 const columns = [
-  { title: '名称', key: 'name', width: 160, ellipsis: { tooltip: true } },
+  { title: '名称', key: 'name', width: 140, ellipsis: { tooltip: true } },
   {
-    title: '类型', key: 'monitor_type', width: 80,
+    title: '分组', key: 'group_name', width: 90,
+    render: (r: SiteMonitor) => r.group_name || '-',
+  },
+  {
+    title: '类型', key: 'monitor_type', width: 70,
     render: (r: SiteMonitor) => h(NTag, { type: r.monitor_type === 'http' ? 'info' : 'success', size: 'small' }, () => r.monitor_type.toUpperCase()),
   },
   { title: '目标', key: 'target', width: 220, ellipsis: { tooltip: true } },

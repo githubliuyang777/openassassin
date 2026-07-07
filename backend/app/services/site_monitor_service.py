@@ -16,8 +16,16 @@ logger = logging.getLogger(__name__)
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
 
-def list_monitors(db: Session) -> list[SiteMonitor]:
-    return db.query(SiteMonitor).order_by(SiteMonitor.updated_at.desc()).all()
+def list_monitors(db: Session, group: str = "") -> list[SiteMonitor]:
+    query = db.query(SiteMonitor)
+    if group:
+        query = query.filter(SiteMonitor.group_name == group)
+    return query.order_by(SiteMonitor.updated_at.desc()).all()
+
+
+def list_groups(db: Session) -> list[str]:
+    rows = db.query(SiteMonitor.group_name).distinct().order_by(SiteMonitor.group_name).all()
+    return [r[0] for r in rows if r[0]]
 
 
 def get_monitor(db: Session, monitor_id: int) -> SiteMonitor | None:
