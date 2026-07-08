@@ -5,7 +5,6 @@ import time
 
 import httpx
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
 
 from app.database import SessionLocal, china_now
 from app.models.site_monitor import SiteMonitor, SiteCheckResult
@@ -54,9 +53,29 @@ def delete_monitor(db: Session, monitor: SiteMonitor) -> None:
 
 
 def get_check_history(db: Session, monitor_id: int, page: int = 1, page_size: int = 20) -> dict:
-    query = db.query(SiteCheckResult).filter(SiteCheckResult.monitor_id == monitor_id)
-    total = query.count()
-    items = query.order_by(desc(SiteCheckResult.checked_at)).offset((page - 1) * page_size).limit(page_size).all()
+    rows = (
+        db.query(SiteCheckResult)
+        .filter(SiteCheckResult.monitor_id == monitor_id)
+        .order_by(SiteCheckResult.checked_at.asc())
+        .all()
+    )
+    # Keep only state transitions: first record + each state change
+    transitions: list[SiteCheckResult] = []
+    prev_up: bool | None = None
+    for r in rows:
+        if prev_up is None or r.is_up != prev_up:
+            transitions.append(r)
+        prev_up = r.is_up
+
+    total = len(transitions)
+    # Reverse to show newest first
+    transitions.reverse()
+    start = (page - 1) * page_size
+    items = [{
+        "id": r.id, "monitor_id": r.monitor_id, "is_up": r.is_up,
+        "status_code": r.status_code, "response_ms": r.response_ms,
+        "error": r.error, "checked_at": r.checked_at.isoformat() if r.checked_at else None,
+    } for r in transitions[start:start + page_size]]
     return {"total": total, "page": page, "page_size": page_size, "items": items}
 
 
@@ -147,6 +166,7 @@ def run_single_check(monitor: SiteMonitor) -> SiteCheckResult:
             _send_down_alert(db, m or monitor, error)
         elif not was_up and ok:
             logger.info("Site %s (%s) recovered", monitor.name, monitor.target)
+            _send_up_alert(db, m or monitor)
 
         return result
     finally:
@@ -179,6 +199,31 @@ Ops Platform 站点监控
         send_email(settings.alert_email, subject, body)
         monitor.last_alerted_at = now
         db.commit()
+    except Exception:
+        pass
+
+
+def _send_up_alert(db: Session, monitor: SiteMonitor) -> None:
+    from app.config import settings
+    if not settings.alert_email or not settings.smtp_host:
+        return
+    if not monitor.alert_enabled:
+        return
+    try:
+        from app.services.email_service import send_email
+        now = china_now()
+        subject = f"[Ops Platform] 站点已恢复: {monitor.name}"
+        body = f"""站点监控恢复通知
+
+名称: {monitor.name}
+目标: {monitor.target}
+类型: {monitor.monitor_type.upper()}
+状态: 已恢复正常
+时间: {now.strftime('%Y-%m-%d %H:%M')} (北京时间)
+
+Ops Platform 站点监控
+"""
+        send_email(settings.alert_email, subject, body)
     except Exception:
         pass
 
