@@ -1,0 +1,43 @@
+name: 缺陷-模板
+description: 当您发现了一个缺陷，需要向社区反馈时，请使用此模板。
+title: "[缺陷]: "
+labels: ["bug"]
+type: "Bug"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢您为社区报告缺陷！请按照以下提示提供详细信息，以便我们更好地理解并跟进。
+
+  - type: textarea
+    attributes:
+      label: 环境信息
+      description: "将查询到的所有版本信息附上"
+    validations:
+      required: false
+
+  - type: textarea
+    attributes:
+      label: 问题详细描述
+      description: "请详细描述发现的问题或缺陷"
+      value: |
+        #### 预置条件
+        <!-- 请描述环境操作前的预置操作或者预置数据信息 -->
+
+        #### 操作步骤
+        <!-- 清晰描述每个步骤需要做的具体操作，如果涉及到接口使用的，请附上详细的接口信息 -->
+
+        #### 结果描述
+        <!-- 通过图文结合的方式清晰说明该步骤的操作对应出现的结果现象 -->
+
+        #### 预期结果
+        <!-- 描述该操作步骤对应的预期结果现象 -->
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: 问题定位情况
+      description: "说明该问题初步的定位分析情况"
+    validations:
+      required: false

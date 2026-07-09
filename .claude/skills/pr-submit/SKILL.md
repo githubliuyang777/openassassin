@@ -3,31 +3,32 @@ name: pr-submit
 description: Submit local changes as a PR to the remote main branch using opensourceways Issue and PR templates. Use this skill whenever the user asks to submit changes, create a PR, push changes to remote, merge to main, 提交PR, 提交代码, or any variation of wanting to send local commits upstream. Also use when the user mentions 缺陷提交模板, pull_request_template, or wants to follow the opensourceways contribution workflow.
 ---
 
-# PR 提交流程（opensourceways 模板）
+# PR 提交流程
 
 将本地改动通过 Issue + PR 模板方式提交到远端仓库主分支。
 
 ## 前置条件
 
 - 已安装 `gh` CLI 并完成认证
-- 当前仓库的 remote origin 指向 GitHub 上的 opensourceways 组织仓库
+
+## 模板文件
+
+本仓库已内置 Issue 和 PR 模板，无需从外部获取：
+
+- **Issue 模板**: `.github/ISSUE_TEMPLATE/bug.yaml` — 标题前缀 `[缺陷]: `，label 为 `bug`
+- **PR 模板**: `.github/pull_request_template.md` — 包含描述、相关 Issue、变更类型勾选
 
 ## 流程
 
 按顺序执行以下 4 个步骤，任何步骤失败则停止后续步骤并报告错误。
 
-### 步骤 1：获取模板
+### 步骤 1：读取本地模板
 
-从 opensourceways/.github 仓库获取 Issue 和 PR 模板，以便后续步骤使用：
+读取项目中的模板文件以了解格式要求：
 
 ```bash
-# 获取 Issue 模板
-gh api repos/opensourceways/.github/contents/.github/ISSUE_TEMPLATE/%E7%BC%BA%E9%99%B7%E6%8F%90%E4%BA%A4%E6%A8%A1%E6%9D%BF.yaml \
-  --jq '.content' | base64 -d
-
-# 获取 PR 模板
-gh api repos/opensourceways/.github/contents/.github/pull_request_template.md \
-  --jq '.content' | base64 -d
+cat .github/ISSUE_TEMPLATE/bug.yaml
+cat .github/pull_request_template.md
 ```
 
 模板关键信息：
@@ -38,7 +39,7 @@ gh api repos/opensourceways/.github/contents/.github/pull_request_template.md \
 
 先检查本地改动（`git status`、`git diff HEAD`），理解变更内容后，按照 Issue 模板格式创建 Issue。
 
-Issue body 结构：
+Issue body 结构（参照 `.github/ISSUE_TEMPLATE/bug.yaml`）：
 ```
 感谢您为社区报告缺陷！请按照以下提示提供详细信息，以便我们更好地理解并跟进。
 
@@ -92,7 +93,7 @@ git push -u origin <branch-name>
 
 ### 步骤 4：创建 PR 关联 Issue
 
-使用 PR 模板格式创建 PR，目标分支为 `main`。必须使用 `resolve` 关键字关联步骤 2 创建的 Issue。
+使用 PR 模板格式创建 PR（参照 `.github/pull_request_template.md`），目标分支为 `main`。必须使用 `resolve` 关键字关联步骤 2 创建的 Issue。
 
 PR body 结构：
 ```markdown
