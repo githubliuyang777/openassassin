@@ -10,6 +10,7 @@ export interface DomainInfo {
   ssl_not_after: string | null
   ssl_expired: boolean
   alert_enabled: boolean
+  notification_group_id: number | null
   days_remaining: number | null
   last_checked_at: string | null
   created_at: string | null
@@ -41,6 +42,10 @@ export function toggleDomainAlert(id: number): Promise<{ data: DomainInfo }> {
 
 export function batchToggleDomainAlert(ids: number[], enabled: boolean): Promise<{ data: { updated: number; domains: DomainInfo[] } }> {
   return api.post('/domains/batch-toggle-alert', { ids, enabled })
+}
+
+export function batchSetNotificationGroup(ids: number[], notification_group_id: number | null): Promise<{ data: { updated: number } }> {
+  return api.post('/domains/batch-set-notification-group', { ids, notification_group_id })
 }
 
 export function deleteDomain(id: number): Promise<void> {

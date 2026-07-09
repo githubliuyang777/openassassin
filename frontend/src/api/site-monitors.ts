@@ -12,6 +12,7 @@ export interface SiteMonitor {
   check_interval: number
   alert_enabled: boolean
   group_name: string
+  notification_group_id: number | null
   is_up: boolean
   last_checked_at: string | null
   last_response_ms: number | null
@@ -40,6 +41,7 @@ export interface SiteMonitorCreate {
   check_interval?: number
   alert_enabled?: boolean
   group_name?: string
+  notification_group_id?: number | null
 }
 
 export function fetchSiteMonitors(group = '') {

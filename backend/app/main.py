@@ -9,7 +9,7 @@ from app.middleware.audit_middleware import AuditMiddleware
 from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.services.auth_service import get_or_create_admin
-from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors
+from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors, notification_groups, notification_recipients
 
 
 def _migrate(table: str, columns: list[tuple[str, str]]):
@@ -49,6 +49,7 @@ def _migrate_domains_table():
         ("ssl_expired", "BOOLEAN DEFAULT 0"),
         ("alert_enabled", "BOOLEAN DEFAULT 1"),
         ("last_checked_at", "DATETIME"),
+        ("notification_group_id", "INTEGER"),
     ])
 
 
@@ -90,6 +91,7 @@ def _migrate_domain_whois_table():
         ("whois_nameservers", "TEXT"),
         ("alert_enabled", "BOOLEAN DEFAULT 1"),
         ("last_checked_at", "DATETIME"),
+        ("notification_group_id", "INTEGER"),
     ])
 
 
@@ -97,6 +99,7 @@ def _migrate_site_monitors_table():
     _migrate("site_monitors", [
         ("last_alerted_at", "DATETIME"),
         ("group_name", "VARCHAR(64) DEFAULT ''"),
+        ("notification_group_id", "INTEGER"),
     ])
 
 
@@ -325,6 +328,8 @@ app.include_router(subscriptions.router, prefix="/api/v1")
 app.include_router(alerts.router, prefix="/api/v1")
 app.include_router(notepads.router, prefix="/api/v1")
 app.include_router(site_monitors.router, prefix="/api/v1")
+app.include_router(notification_groups.router, prefix="/api/v1")
+app.include_router(notification_recipients.router, prefix="/api/v1")
 
 
 @app.get("/api/health")

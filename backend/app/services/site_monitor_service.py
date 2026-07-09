@@ -4,6 +4,8 @@ import socket
 import time
 
 import httpx
+from typing import List, Optional
+
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, china_now
@@ -15,19 +17,19 @@ logger = logging.getLogger(__name__)
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
 
-def list_monitors(db: Session, group: str = "") -> list[SiteMonitor]:
+def list_monitors(db: Session, group: str = "") -> List[SiteMonitor]:
     query = db.query(SiteMonitor)
     if group:
         query = query.filter(SiteMonitor.group_name == group)
     return query.order_by(SiteMonitor.updated_at.desc()).all()
 
 
-def list_groups(db: Session) -> list[str]:
+def list_groups(db: Session) -> List[str]:
     rows = db.query(SiteMonitor.group_name).distinct().order_by(SiteMonitor.group_name).all()
     return [r[0] for r in rows if r[0]]
 
 
-def get_monitor(db: Session, monitor_id: int) -> SiteMonitor | None:
+def get_monitor(db: Session, monitor_id: int) -> Optional[SiteMonitor]:
     return db.query(SiteMonitor).filter(SiteMonitor.id == monitor_id).first()
 
 
@@ -173,16 +175,29 @@ def run_single_check(monitor: SiteMonitor) -> SiteCheckResult:
         db.close()
 
 
+def _get_alert_emails(db: Session, monitor: SiteMonitor) -> list[str]:
+    from app.config import settings
+    if monitor.notification_group_id:
+        from app.services.notification_service import get_recipient_emails
+        emails = get_recipient_emails(db, monitor.notification_group_id)
+        if emails:
+            return emails
+    return [settings.alert_email] if settings.alert_email else []
+
+
 def _send_down_alert(db: Session, monitor: SiteMonitor, error: str | None) -> None:
     from datetime import timedelta
     from app.config import settings
-    if not settings.alert_email or not settings.smtp_host:
+    if not settings.smtp_host:
         return
     if not monitor.alert_enabled:
         return
     now = china_now()
     if monitor.last_alerted_at and monitor.last_alerted_at > now - timedelta(hours=1):
         return  # already alerted within 1 hour
+    emails = _get_alert_emails(db, monitor)
+    if not emails:
+        return
     try:
         from app.services.email_service import send_email
         subject = f"[Ops Platform] 站点不可达: {monitor.name}"
@@ -196,7 +211,8 @@ def _send_down_alert(db: Session, monitor: SiteMonitor, error: str | None) -> No
 
 Ops Platform 站点监控
 """
-        send_email(settings.alert_email, subject, body)
+        for addr in emails:
+            send_email(addr, subject, body)
         monitor.last_alerted_at = now
         db.commit()
     except Exception:
@@ -205,9 +221,12 @@ Ops Platform 站点监控
 
 def _send_up_alert(db: Session, monitor: SiteMonitor) -> None:
     from app.config import settings
-    if not settings.alert_email or not settings.smtp_host:
+    if not settings.smtp_host:
         return
     if not monitor.alert_enabled:
+        return
+    emails = _get_alert_emails(db, monitor)
+    if not emails:
         return
     try:
         from app.services.email_service import send_email
@@ -223,7 +242,8 @@ def _send_up_alert(db: Session, monitor: SiteMonitor) -> None:
 
 Ops Platform 站点监控
 """
-        send_email(settings.alert_email, subject, body)
+        for addr in emails:
+            send_email(addr, subject, body)
     except Exception:
         pass
 

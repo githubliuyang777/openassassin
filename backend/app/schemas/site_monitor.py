@@ -14,6 +14,7 @@ class SiteMonitorCreate(BaseModel):
     check_interval: int = Field(default=300, ge=30)
     alert_enabled: bool = True
     group_name: str = ""
+    notification_group_id: int | None = None
 
 
 class SiteMonitorUpdate(BaseModel):
@@ -27,6 +28,7 @@ class SiteMonitorUpdate(BaseModel):
     check_interval: int | None = None
     alert_enabled: bool | None = None
     group_name: str | None = None
+    notification_group_id: int | None = None
 
 
 class SiteMonitorResponse(BaseModel):
@@ -41,6 +43,7 @@ class SiteMonitorResponse(BaseModel):
     check_interval: int
     alert_enabled: bool
     group_name: str
+    notification_group_id: int | None = None
     is_up: bool
     last_checked_at: datetime | None = None
     last_response_ms: float | None = None
