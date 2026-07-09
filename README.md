@@ -1,6 +1,6 @@
 # openAssassin
 
-云原生运维管理平台 — 管理员登录、管理脚本(Shell/Python)、引用密钥执行、查看日志。Docker Compose 一键部署。
+开源刺客平台 — 管理员登录、管理脚本(Shell/Python)、引用密钥执行、查看日志，支持 TOTP 双因素认证。Docker Compose 一键部署。
 
 ## 快速开始
 
@@ -42,6 +42,7 @@ open http://localhost:8080
 | 全局告警横幅 | 页面顶部居中显示告警摘要，按严重度着色，60s 轮询 |
 | 密码修改 | 登录后通过顶部栏下拉菜单修改密码 |
 | 忘记密码 | 邮箱验证码找回密码（需配置 SMTP） |
+| 双因素认证 | TOTP (Google Authenticator) 二次验证，Email OTP 绑定过渡，8 个一次性备用码 |
 
 ## 技术栈
 
@@ -50,7 +51,7 @@ open http://localhost:8080
 | 后端 | Python FastAPI + SQLAlchemy + SQLite | 3.12+ |
 | 前端 | Vue 3 + Vite + TypeScript + Naive UI + Pinia | 3.5+ |
 | 加密 | AES-256-GCM (cryptography) | — |
-| 认证 | JWT (python-jose + bcrypt) | — |
+| 认证 | JWT (python-jose + bcrypt) + TOTP (pyotp) | — |
 | 沙箱 | Docker SDK for Python | — |
 | 部署 | Docker Compose | — |
 
@@ -75,7 +76,7 @@ infra-ops/
 │   │   ├── router/                 # Vue Router + beforeEach 守卫
 │   │   ├── stores/                 # Pinia 状态管理
 │   │   ├── api/                    # Axios client + 模块 API
-│   │   ├── views/                  # 页面组件 (17 个)
+│   │   ├── views/                  # 页面组件 (18 个)
 │   │   ├── layouts/                # MainLayout (侧边栏 + 顶栏)
 │   │   └── __tests__/              # vitest 测试 (10 用例)
 │   └── package.json
@@ -178,6 +179,13 @@ PR → backend-tests  ──┐
 | PUT | `/api/v1/auth/password` | 修改密码 | 是 |
 | POST | `/api/v1/auth/forgot-password` | 发送重置验证码 | 否 |
 | POST | `/api/v1/auth/reset-password` | 验证码重置密码 | 否 |
+| POST | `/api/v1/auth/mfa/verify` | 验证 TOTP 码 | MFA Token |
+| POST | `/api/v1/auth/mfa/recovery` | 备用码验证 | MFA Token |
+| GET | `/api/v1/auth/mfa/status` | 查询 MFA 状态 | 是 |
+| POST | `/api/v1/auth/mfa/setup/init` | 发送 Email OTP 绑定验证码 | 是 |
+| POST | `/api/v1/auth/mfa/setup/verify-email` | 验证 Email OTP 并获取二维码 | 是 |
+| POST | `/api/v1/auth/mfa/setup/confirm` | 确认 TOTP 绑定 | Setup Token |
+| POST | `/api/v1/auth/mfa/disable` | 禁用 TOTP（需密码） | 是 |
 
 ### 脚本与执行
 
