@@ -2,7 +2,7 @@
 
 ## 项目定位
 
-云原生运维管理平台：管理员登录 → 管理脚本(Shell/Python) → 引用密钥执行 → 查看日志。
+开源刺客平台：管理员登录 → 管理脚本(Shell/Python) → 引用密钥执行 → 查看日志，支持 TOTP 双因素认证。
 Docker Compose 一键部署，默认账号 admin/admin。
 
 ## 技术栈
