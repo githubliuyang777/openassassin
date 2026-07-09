@@ -94,7 +94,7 @@ infra-ops/
 - Commit message 遵循项目规范，简洁描述"为什么"而非"是什么"
 - PR 标题简洁（<70 字符），描述包含变更摘要和测试计划
 - **提交 PR 时必须确认是否解决代码仓的 issue**：
-  - 如果本次变更解决某个已有 issue，必须在 PR 描述中使用 GitHub 关联合键字关联该 issue（如 `Closes #123`、`Fixes #123`）
+  - 如果本次变更解决某个已有 issue，必须在 PR 描述中使用 GitHub 关联关键字关联该 issue（如 `Closes #123`、`Fixes #123`）
   - 如果本次变更不涉及已有 issue，在 PR 描述中注明"无关联 issue"
 
 ### 7. 门禁检查
