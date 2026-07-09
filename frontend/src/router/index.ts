@@ -31,6 +31,7 @@ const router = createRouter({
         { path: 'system/alert-notifications', name: 'AlertNotifications', component: () => import('@/views/AlertNotificationsView.vue') },
         { path: 'system/notifications', name: 'Notifications', component: () => import('@/views/NotificationsView.vue') },
         { path: 'profile', name: 'Profile', component: () => import('@/views/ProfileView.vue') },
+        { path: 'mfa-setup', name: 'MfaSetup', component: () => import('@/views/MfaSetupView.vue') },
         { path: 'monitor/domains', name: 'monitor-domains', component: () => import('@/views/DomainCertView.vue') },
         { path: 'notepads', name: 'Notepads', component: () => import('@/views/NotepadView.vue') },
         { path: 'subscriptions', name: 'Subscriptions', component: () => import('@/views/SubscriptionView.vue') },

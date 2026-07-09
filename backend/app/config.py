@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     audit_enabled: bool = True
     audit_ip_source: str = "forwarded"
     audit_log_retention_days: int = 180
+    # TOTP / MFA
+    totp_issuer: str = "openAssassin"
+    totp_mfa_token_minutes: int = 2
+    totp_setup_token_minutes: int = 5
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
