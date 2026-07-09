@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     sandbox_cpu_limit: float = 0.5
     sandbox_default_timeout: int = 300
     sandbox_max_timeout: int = 3600
-    sandbox_tmp_dir: str = "/tmp/infra-ops-sandbox"
+    sandbox_tmp_dir: str = "/tmp/openassassin-sandbox"
     log_dir: str = "./data/logs"
     # SMTP for password reset
     smtp_host: str = ""
