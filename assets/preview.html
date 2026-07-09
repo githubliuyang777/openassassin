@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>openAssassin Logo Preview</title>
+<style>
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+    background: #0d0d1a;
+    font-family: Arial, sans-serif;
+    color: #aaa;
+  }
+  .card {
+    background: #111122;
+    border-radius: 12px;
+    padding: 40px;
+    box-shadow: 0 4px 24px rgba(233,69,96,0.1);
+  }
+  h3 {
+    color: #666;
+    font-weight: 400;
+    margin: 0 0 20px;
+    text-align: center;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+  small { color: #555; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h3>Square Logo</h3>
+  <img src="logo.svg" alt="openAssassin" style="height: 120px">
+</div>
+
+<div class="card" style="background: linear-gradient(135deg, #1a1a2e, #16213e); padding: 30px 60px; border-radius: 60px;">
+  <h3 style="color: #777">Pill Shape (Header)</h3>
+  <img src="logo.svg" alt="openAssassin" style="height: 60px">
+</div>
+
+<div class="card">
+  <h3>Small / Favicon Size</h3>
+  <img src="logo.svg" alt="openAssassin" style="height: 32px">
+</div>
+
+<small>SVG vector — scales to any size without quality loss</small>
+
+</body>
+</html>

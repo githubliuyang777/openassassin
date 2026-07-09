@@ -1,6 +1,6 @@
 <template>
   <n-layout style="height: 100vh; display: flex; align-items: center; justify-content: center; background: #f5f7fa">
-    <n-card style="width: 400px" title="Ops Platform 登录">
+    <n-card style="width: 400px" title="openAssassin 登录">
       <n-form ref="formRef" :model="form" :rules="rules">
         <n-form-item path="username" label="用户名">
           <n-input v-model:value="form.username" placeholder="请输入用户名" />

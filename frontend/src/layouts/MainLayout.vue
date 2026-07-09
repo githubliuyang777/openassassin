@@ -1,8 +1,8 @@
 <template>
   <n-layout style="height: 100vh">
     <n-layout-header bordered style="height: 56px; padding: 0 24px; display: flex; align-items: center; gap: 12px">
-      <n-icon size="22" color="#2080f0"><ServerOutline /></n-icon>
-      <n-text strong style="font-size: 17px">Ops Platform</n-text>
+      <img src="/logo.svg" alt="openAssassin" style="height: 28px" />
+      <n-text strong style="font-size: 17px">openAssassin</n-text>
       <n-space style="margin-left: auto" align="center">
         <n-dropdown trigger="click" :options="userMenuOptions" @select="handleUserMenu">
           <n-button text>

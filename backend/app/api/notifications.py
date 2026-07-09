@@ -11,7 +11,7 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 @router.post("/test-email")
 def test_email(req: TestEmailRequest, user: dict = Depends(get_current_user)):
     try:
-        email_service.send_email(req.email, "Ops Platform 邮件测试", "Ops Platform SMTP 配置测试邮件 — 发送成功！")
+        email_service.send_email(req.email, "openAssassin 邮件测试", "openAssassin SMTP 配置测试邮件 — 发送成功！")
     except email_service.EmailNotConfiguredError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:

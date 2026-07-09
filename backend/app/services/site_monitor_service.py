@@ -200,7 +200,7 @@ def _send_down_alert(db: Session, monitor: SiteMonitor, error: str | None) -> No
         return
     try:
         from app.services.email_service import send_email
-        subject = f"[Ops Platform] 站点不可达: {monitor.name}"
+        subject = f"[openAssassin] 站点不可达: {monitor.name}"
         body = f"""站点监控告警
 
 名称: {monitor.name}
@@ -209,7 +209,7 @@ def _send_down_alert(db: Session, monitor: SiteMonitor, error: str | None) -> No
 错误: {error or '连接失败'}
 时间: {now.strftime('%Y-%m-%d %H:%M')} (北京时间)
 
-Ops Platform 站点监控
+openAssassin 站点监控
 """
         for addr in emails:
             send_email(addr, subject, body)
@@ -231,7 +231,7 @@ def _send_up_alert(db: Session, monitor: SiteMonitor) -> None:
     try:
         from app.services.email_service import send_email
         now = china_now()
-        subject = f"[Ops Platform] 站点已恢复: {monitor.name}"
+        subject = f"[openAssassin] 站点已恢复: {monitor.name}"
         body = f"""站点监控恢复通知
 
 名称: {monitor.name}
@@ -240,7 +240,7 @@ def _send_up_alert(db: Session, monitor: SiteMonitor) -> None:
 状态: 已恢复正常
 时间: {now.strftime('%Y-%m-%d %H:%M')} (北京时间)
 
-Ops Platform 站点监控
+openAssassin 站点监控
 """
         for addr in emails:
             send_email(addr, subject, body)

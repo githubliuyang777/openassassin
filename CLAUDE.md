@@ -1,4 +1,4 @@
-# Ops Platform — Agent Team Charter
+# openAssassin — Agent Team Charter
 
 ## 项目定位
 
@@ -93,6 +93,9 @@ infra-ops/
 - **禁止直接合入主分支（master/main）**，必须走 PR 流程
 - Commit message 遵循项目规范，简洁描述"为什么"而非"是什么"
 - PR 标题简洁（<70 字符），描述包含变更摘要和测试计划
+- **提交 PR 时必须确认是否解决代码仓的 issue**：
+  - 如果本次变更解决某个已有 issue，必须在 PR 描述中使用 GitHub 关联合键字关联该 issue（如 `Closes #123`、`Fixes #123`）
+  - 如果本次变更不涉及已有 issue，在 PR 描述中注明"无关联 issue"
 
 ### 7. 门禁检查
 - PR 提交后等待 CI/CD 门禁检查通过
@@ -108,6 +111,7 @@ infra-ops/
 ### 9. 合入 PR
 - 审核通过后执行 merge 合入主分支
 - 合入后验证主分支构建状态
+- **合入后必须关闭关联的 issue**：如果 PR 描述中关联合了 issue（通过 `Closes`/`Fixes` 关键字），GitHub 会在 PR 合入时自动关闭对应 issue；需确认 issue 已成功关闭，若未自动关闭则手动关闭
 
 ### 10. 更新 README.md (必须)
 - 新特性上线后，**必须同步更新项目 README.md**，反映当前系统的完整功能概览
