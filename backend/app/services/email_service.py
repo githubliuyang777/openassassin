@@ -35,13 +35,13 @@ def _send_raw(to: str, subject: str, body: str) -> None:
 
 
 def send_reset_code(email: str, code: str) -> None:
-    body = f"""您的 Ops Platform 密码重置验证码为：
+    body = f"""您的 openAssassin 密码重置验证码为：
 
     {code}
 
 该验证码 5 分钟内有效。如非本人操作，请忽略此邮件。
 """
-    _send_raw(email, "Ops Platform 密码重置验证码", body)
+    _send_raw(email, "openAssassin 密码重置验证码", body)
 
 
 def send_email(to: str, subject: str, body: str) -> None:

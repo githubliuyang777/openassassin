@@ -1,4 +1,4 @@
-# Ops Platform
+# openAssassin
 
 云原生运维管理平台 — 管理员登录、管理脚本(Shell/Python)、引用密钥执行、查看日志。Docker Compose 一键部署。
 

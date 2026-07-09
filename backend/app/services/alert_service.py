@@ -177,7 +177,7 @@ def check_and_alert(db: Session) -> int:
         try:
             from app.services.email_service import send_email
             days_left = (cred.expires_at - now).days
-            subject = f"[Ops Platform] 密钥即将过期: {cred.name}"
+            subject = f"[openAssassin] 密钥即将过期: {cred.name}"
             body = f"""密钥 "{cred.name}" 即将过期。
 
 密钥类型: {cred.type}

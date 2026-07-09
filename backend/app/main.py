@@ -303,7 +303,7 @@ async def lifespan(app: FastAPI):
     site_task.cancel()
 
 
-app = FastAPI(title="Ops Platform", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="openAssassin", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
