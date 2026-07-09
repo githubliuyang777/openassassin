@@ -23,6 +23,10 @@ open http://localhost:8080
 
 > 首次登录后建议立即修改密码。如忘记密码，可使用登录页的「忘记密码」功能（需配置 SMTP）。
 
+## 界面预览
+
+![openAssassin 仪表盘](assets/screenshot.png)
+
 ## 功能概览
 
 | 模块 | 功能 |
