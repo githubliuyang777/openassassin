@@ -3,13 +3,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
-from app.schemas.execution import ExecutionResponse
+from app.schemas.execution import ExecutionResponse, ExecutionListResponse
 from app.models.execution import Execution
 
 router = APIRouter(prefix="/executions", tags=["executions"])
 
 
-@router.get("", response_model=dict)
+@router.get("", response_model=ExecutionListResponse)
 def list_executions(
     page: int = 1,
     page_size: int = 20,

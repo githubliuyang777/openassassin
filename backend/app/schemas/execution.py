@@ -14,3 +14,10 @@ class ExecutionResponse(BaseModel):
     credential_ids: list[int] = []
 
     model_config = {"from_attributes": True}
+
+
+class ExecutionListResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    items: list[ExecutionResponse]
