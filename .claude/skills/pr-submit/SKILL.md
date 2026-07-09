@@ -1,6 +1,6 @@
 ---
 name: pr-submit
-description: Submit local changes as a PR to the remote main branch using opensourceways Issue and PR templates. Use this skill whenever the user asks to submit changes, create a PR, push changes to remote, merge to main, 提交PR, 提交代码, or any variation of wanting to send local commits upstream. Also use when the user mentions 缺陷提交模板, pull_request_template, or wants to follow the opensourceways contribution workflow.
+description: Submit local changes as a PR to the remote main branch using local Issue and PR templates. Use this skill whenever the user asks to submit changes, create a PR, push changes to remote, merge to main, 提交PR, 提交代码, or any variation of wanting to send local commits upstream. Also use when the user mentions 缺陷提交模板, pull_request_template, or wants to follow the contribution workflow.
 ---
 
 # PR 提交流程

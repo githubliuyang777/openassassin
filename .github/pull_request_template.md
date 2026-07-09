@@ -2,7 +2,7 @@
 <!-- 请简要描述这个 PR 的目的和变更内容 -->
 
 ## 相关 Issue
-<!-- 链接到相关的 issue，使用关键字，如：resolve https://github.com/opensourceways/{repo}/issues/2 -->
+<!-- 链接到相关的 issue，使用关键字，如：resolve https://github.com/githubliuyang777/{repo}/issues/2 -->
 
 ## 变更类型
 <!-- 请勾选适用的变更类型 -->
