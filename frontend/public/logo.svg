@@ -1,17 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 120" width="420" height="120">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#0f0f1a"/>
-      <stop offset="100%" stop-color="#1a1025"/>
+      <stop offset="0%" stop-color="#0a1628"/>
+      <stop offset="100%" stop-color="#0d2137"/>
     </linearGradient>
     <linearGradient id="redGrad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#e94560"/>
-      <stop offset="50%" stop-color="#ff2d55"/>
-      <stop offset="100%" stop-color="#e94560"/>
+      <stop offset="0%" stop-color="#2080f0"/>
+      <stop offset="50%" stop-color="#4da6ff"/>
+      <stop offset="100%" stop-color="#2080f0"/>
     </linearGradient>
     <linearGradient id="bladeGrad" x1="0" y1="1" x2="1" y2="0">
-      <stop offset="0%" stop-color="#4a1942"/>
-      <stop offset="100%" stop-color="#e94560"/>
+      <stop offset="0%" stop-color="#0d2137"/>
+      <stop offset="100%" stop-color="#2080f0"/>
     </linearGradient>
     <filter id="glow">
       <feGaussianBlur stdDeviation="1.5" result="blur"/>
@@ -23,7 +23,7 @@
   <rect x="0" y="10" width="420" height="100" rx="50" fill="url(#bg)"/>
 
   <!-- Circuit board traces -->
-  <g stroke="#e94560" stroke-width="0.8" opacity="0.15" fill="none">
+  <g stroke="#2080f0" stroke-width="0.8" opacity="0.15" fill="none">
     <path d="M10,30 L30,30 L40,40 L60,40 L70,35 L90,35"/>
     <path d="M15,85 L40,85 L50,75 L70,75 L80,80 L100,80"/>
     <circle cx="90" cy="35" r="2"/>
@@ -35,36 +35,36 @@
   <!-- Assassin hood silhouette -->
   <g transform="translate(45, 16)" filter="url(#glow)">
     <!-- Hood -->
-    <path d="M28,4 L44,0 L60,4 L66,38 L70,68 L18,68 L22,38 Z" fill="#e94560"/>
+    <path d="M28,4 L44,0 L60,4 L66,38 L70,68 L18,68 L22,38 Z" fill="#2080f0"/>
     <!-- Hood inner shadow -->
-    <path d="M30,34 Q44,18 58,34 L54,58 Q44,48 34,58 Z" fill="#0f0f1a" opacity="0.5"/>
+    <path d="M30,34 Q44,18 58,34 L54,58 Q44,48 34,58 Z" fill="#0a1628" opacity="0.5"/>
     <!-- Eyes glow -->
     <circle cx="36" cy="40" r="3" fill="#fff"/>
     <circle cx="52" cy="40" r="3" fill="#fff"/>
     <!-- Mask -->
-    <path d="M30,48 Q44,54 58,48" stroke="#e94560" stroke-width="1.5" fill="none"/>
+    <path d="M30,48 Q44,54 58,48" stroke="#2080f0" stroke-width="1.5" fill="none"/>
     <!-- Hood edge highlight -->
-    <path d="M28,4 L44,0 L60,4" stroke="#ff2d55" stroke-width="2" fill="none" opacity="0.6"/>
+    <path d="M28,4 L44,0 L60,4" stroke="#4da6ff" stroke-width="2" fill="none" opacity="0.6"/>
   </g>
 
   <!-- Hidden blade accent -->
   <g transform="translate(72, 52)" opacity="0.9">
     <path d="M0,2 L22,-30 L8,-30 L3,-2 Z" fill="url(#bladeGrad)"/>
-    <path d="M0,-2 L22,-30" stroke="#e94560" stroke-width="1" fill="none" opacity="0.5"/>
+    <path d="M0,-2 L22,-30" stroke="#2080f0" stroke-width="1" fill="none" opacity="0.5"/>
   </g>
 
   <!-- Tech scanner line -->
   <g transform="translate(105, 20)" opacity="0.3">
-    <line x1="0" y1="15" x2="0" y2="75" stroke="#e94560" stroke-width="1"/>
-    <line x1="0" y1="15" x2="8" y2="15" stroke="#e94560" stroke-width="1"/>
-    <line x1="0" y1="35" x2="8" y2="35" stroke="#e94560" stroke-width="1"/>
-    <line x1="0" y1="55" x2="8" y2="55" stroke="#e94560" stroke-width="1"/>
-    <line x1="0" y1="75" x2="8" y2="75" stroke="#e94560" stroke-width="1"/>
-    <circle cx="0" cy="15" r="2" fill="#e94560"/>
-    <circle cx="0" cy="55" r="2" fill="#e94560"/>
+    <line x1="0" y1="15" x2="0" y2="75" stroke="#2080f0" stroke-width="1"/>
+    <line x1="0" y1="15" x2="8" y2="15" stroke="#2080f0" stroke-width="1"/>
+    <line x1="0" y1="35" x2="8" y2="35" stroke="#2080f0" stroke-width="1"/>
+    <line x1="0" y1="55" x2="8" y2="55" stroke="#2080f0" stroke-width="1"/>
+    <line x1="0" y1="75" x2="8" y2="75" stroke="#2080f0" stroke-width="1"/>
+    <circle cx="0" cy="15" r="2" fill="#2080f0"/>
+    <circle cx="0" cy="55" r="2" fill="#2080f0"/>
   </g>
 
-  <!-- Main text: openAssassin (A=red, others=white) -->
+  <!-- Main text: openAssassin (A=blue, others=white) -->
   <g font-family="'Courier New',monospace" font-weight="700" font-size="38" filter="url(#glow)">
     <text x="125" y="72" fill="#ffffff">open</text>
     <text x="224" y="72" fill="url(#redGrad)">A</text>
@@ -72,12 +72,12 @@
   </g>
 
   <!-- Decorative dots -->
-  <circle cx="125" cy="18" r="3" fill="#e94560" opacity="0.8" filter="url(#glow)"/>
-  <circle cx="113" cy="12" r="1.5" fill="#533483" opacity="0.5"/>
-  <circle cx="140" cy="14" r="2" fill="#e94560" opacity="0.3"/>
+  <circle cx="125" cy="18" r="3" fill="#2080f0" opacity="0.8" filter="url(#glow)"/>
+  <circle cx="113" cy="12" r="1.5" fill="#1a3a5c" opacity="0.5"/>
+  <circle cx="140" cy="14" r="2" fill="#2080f0" opacity="0.3"/>
 
   <!-- Bottom circuit line -->
-  <g stroke="#e94560" stroke-width="0.6" opacity="0.15" fill="none">
+  <g stroke="#2080f0" stroke-width="0.6" opacity="0.15" fill="none">
     <path d="M280,98 L320,98 L330,95 L350,95"/>
     <circle cx="350" cy="95" r="1.5"/>
     <path d="M380,98 L400,98 L410,95 L418,95"/>
