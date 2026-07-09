@@ -6,8 +6,8 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/githubliuyang777/infra-ops.git
-cd infra-ops
+git clone https://github.com/githubliuyang777/openassassin.git
+cd openassassin
 
 # 构建并部署（无缓存构建前后端镜像 + 自动拉起）
 bash deploy.sh
@@ -58,7 +58,7 @@ open http://localhost:8080
 ## 目录结构
 
 ```
-infra-ops/
+openassassin/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py                 # FastAPI 入口

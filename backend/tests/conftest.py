@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 os.environ["JWT_SECRET"] = "test-jwt-secret-key-32-chars!!"
 os.environ["MASTER_KEY"] = "test-master-key-needs-32-byte!"
-os.environ["SANDBOX_TMP_DIR"] = "/tmp/infra-ops-sandbox-test"
+os.environ["SANDBOX_TMP_DIR"] = "/tmp/openassassin-sandbox-test"
 os.environ["LOG_DIR"] = "/tmp/ops-test-logs"
 
 os.environ["AUDIT_ENABLED"] = "false"

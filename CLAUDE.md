@@ -19,7 +19,7 @@ Docker Compose 一键部署，默认账号 admin/admin。
 ## 目录结构
 
 ```
-infra-ops/
+openassassin/
 ├── backend/app/
 │   ├── main.py           # FastAPI 入口, lifespan 中自动建表+创建admin
 │   ├── config.py         # pydantic-settings, 所有配置集中管理
