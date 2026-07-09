@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
 from app.database import Base, china_now
 
 
@@ -14,5 +14,6 @@ class Domain(Base):
     ssl_not_after = Column(DateTime, nullable=True)
     ssl_expired = Column(Boolean, default=False)
     alert_enabled = Column(Boolean, default=True)
+    notification_group_id = Column(Integer, ForeignKey("notification_groups.id"), nullable=True)
     last_checked_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=china_now)

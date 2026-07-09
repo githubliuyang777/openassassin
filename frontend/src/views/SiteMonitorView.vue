@@ -78,6 +78,14 @@
             tag
           />
         </n-form-item>
+        <n-form-item path="notification_group_id" label="通知组">
+          <n-select
+            v-model:value="form.notification_group_id"
+            :options="notifGroupOptions"
+            placeholder="默认（管理员邮箱）"
+            clearable
+          />
+        </n-form-item>
         <n-form-item path="alert_enabled" label="告警通知">
           <n-switch v-model:value="form.alert_enabled" />
         </n-form-item>
@@ -151,6 +159,8 @@ import { AddOutline, PulseOutline, DownloadOutline, GridOutline } from '@vicons/
 import {
   fetchSiteMonitors, createSiteMonitor, updateSiteMonitor, deleteSiteMonitor, checkNow, fetchHistory, exportSla, fetchHeatmap, fetchMonitorGroups,
 } from '@/api/site-monitors'
+import { fetchGroups } from '@/api/notification-groups'
+import type { NotificationGroup } from '@/api/notification-groups'
 import type { SiteMonitor, SiteMonitorCreate, SiteCheckResult, HeatmapCell } from '@/api/site-monitors'
 
 const message = useMessage()
@@ -165,11 +175,16 @@ const formRef = ref()
 const form = ref<SiteMonitorCreate>({
   name: '', target: '', monitor_type: 'http', http_method: 'GET',
   expected_status_codes: '200', timeout: 10, retries: 2, check_interval: 300, alert_enabled: true,
-  group_name: '',
+  group_name: '', notification_group_id: null,
 })
 
 const typeOptions = [{ label: 'HTTP(S)', value: 'http' }, { label: 'TCP', value: 'tcp' }]
 const methodOptions = [{ label: 'GET', value: 'GET' }, { label: 'HEAD', value: 'HEAD' }]
+
+const notificationGroups = ref<NotificationGroup[]>([])
+const notifGroupOptions = computed(() =>
+  notificationGroups.value.map((g) => ({ label: g.name, value: g.id }))
+)
 
 const rules = {
   name: [{ required: true, message: '请输入名称' }],
@@ -181,6 +196,13 @@ function onTypeChange() {
     form.value.http_method = 'GET'
     form.value.expected_status_codes = '200'
   }
+}
+
+async function loadNotificationGroups() {
+  try {
+    const resp = await fetchGroups()
+    notificationGroups.value = resp.data
+  } catch (_e) { /* ignore */ }
 }
 
 // History state
@@ -248,16 +270,18 @@ async function loadMonitors() {
   try {
     const resp = await fetchSiteMonitors(selectedGroup.value)
     monitors.value = resp.data
-    const gResp = await fetchMonitorGroups()
+    const [gResp, ngResp] = await Promise.all([fetchMonitorGroups(), fetchGroups()])
     groups.value = gResp.data
+    notificationGroups.value = ngResp.data
   } catch (_e) { /* ignore */ }
   finally { loading.value = false }
 }
 
 function openCreate() {
   editingId.value = null
-  form.value = { name: '', target: '', monitor_type: 'http', http_method: 'GET', expected_status_codes: '200', timeout: 10, retries: 2, check_interval: 300, alert_enabled: true, group_name: '' }
+  form.value = { name: '', target: '', monitor_type: 'http', http_method: 'GET', expected_status_codes: '200', timeout: 10, retries: 2, check_interval: 300, alert_enabled: true, group_name: '', notification_group_id: null }
   showForm.value = true
+  loadNotificationGroups()
 }
 
 function openEdit(row: SiteMonitor) {
@@ -267,8 +291,10 @@ function openEdit(row: SiteMonitor) {
     http_method: row.http_method, expected_status_codes: row.expected_status_codes,
     timeout: row.timeout, retries: row.retries, check_interval: row.check_interval,
     alert_enabled: row.alert_enabled, group_name: row.group_name || '',
+    notification_group_id: row.notification_group_id ?? null,
   }
   showForm.value = true
+  loadNotificationGroups()
 }
 
 async function handleSave() {

@@ -28,6 +28,7 @@ const router = createRouter({
         { path: 'scripts/:id/execute', name: 'ScriptExecute', component: () => import('@/views/ScriptExecute.vue') },
         { path: 'credentials', name: 'Credentials', component: () => import('@/views/CredentialListView.vue') },
         { path: 'executions', name: 'Executions', component: () => import('@/views/ExecutionHistory.vue') },
+        { path: 'system/alert-notifications', name: 'AlertNotifications', component: () => import('@/views/AlertNotificationsView.vue') },
         { path: 'system/notifications', name: 'Notifications', component: () => import('@/views/NotificationsView.vue') },
         { path: 'profile', name: 'Profile', component: () => import('@/views/ProfileView.vue') },
         { path: 'monitor/domains', name: 'monitor-domains', component: () => import('@/views/DomainCertView.vue') },

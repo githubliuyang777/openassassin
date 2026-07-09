@@ -146,6 +146,15 @@ def batch_toggle_alert(db: Session, ids: list[int], enabled: bool) -> int:
     return count
 
 
+def batch_set_notification_group(db: Session, ids, group_id):
+    query = db.query(DomainWhois)
+    if ids:
+        query = query.filter(DomainWhois.id.in_(ids))
+    count = query.update({DomainWhois.notification_group_id: group_id}, synchronize_session=False)
+    db.commit()
+    return count
+
+
 def delete_domain(db: Session, domain_id: int) -> bool:
     dom = db.query(DomainWhois).filter(DomainWhois.id == domain_id).first()
     if not dom:

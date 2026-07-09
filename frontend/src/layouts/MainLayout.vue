@@ -71,6 +71,7 @@ import {
   ShieldCheckmarkOutline,
   NotificationsOutline,
   DocumentTextOutline,
+  MailOutline,
 } from '@vicons/ionicons5'
 import AlertBanner from '@/components/AlertBanner.vue'
 import { fetchAlertSummary } from '@/api/alerts'
@@ -169,7 +170,8 @@ const menuOptions = [
     key: 'System',
     icon: () => h(NIcon, null, () => h(SettingsOutline)),
     children: [
-      { label: '消息通知', key: 'system-notifications' },
+      { label: '告警', key: 'system-alert-notifications', icon: () => h(NIcon, null, () => h(NotificationsOutline)) },
+      { label: '消息通知', key: 'system-notifications', icon: () => h(NIcon, null, () => h(MailOutline)) },
       { label: '网络测试', key: 'system-network-test', icon: () => h(NIcon, null, () => h(PulseOutline)) },
       { label: '审计日志', key: 'system-audit-logs', icon: () => h(NIcon, null, () => h(ShieldCheckmarkOutline)) },
     ],
@@ -185,6 +187,7 @@ function activeKeyFromPath() {
   if (route.path.startsWith('/hosts')) return 'Hosts'
   if (route.path.startsWith('/system/audit-logs')) return 'system-audit-logs'
   if (route.path.startsWith('/system/network-test')) return 'system-network-test'
+  if (route.path.startsWith('/system/alert-notifications')) return 'system-alert-notifications'
   if (route.path.startsWith('/system')) return 'system-notifications'
   if (route.path.startsWith('/monitor/site-monitor')) return 'monitor-site-monitor'
   if (route.path.startsWith('/monitor/domains-whois')) return 'monitor-domains-whois'
@@ -195,6 +198,10 @@ function activeKeyFromPath() {
 const activeKey = computed(activeKeyFromPath)
 
 function handleMenu(key: string) {
+  if (key === 'system-alert-notifications') {
+    router.push('/system/alert-notifications')
+    return
+  }
   if (key === 'system-notifications') {
     router.push('/system/notifications')
     return

@@ -24,6 +24,9 @@
       <n-button size="tiny" @click="checkedRowKeys = []">取消选择</n-button>
       <n-button size="tiny" type="primary" @click="handleBatchToggleAlert(true)">启用告警</n-button>
       <n-button size="tiny" type="warning" @click="handleBatchToggleAlert(false)">停用告警</n-button>
+      <n-divider vertical />
+      <n-select v-model:value="selectedNotifGroup" :options="notifGroupOptions" placeholder="通知组" size="tiny" style="width: 160px" clearable />
+      <n-button size="tiny" type="info" @click="handleBatchSetNotifGroup">设置通知组</n-button>
     </div>
 
     <n-data-table
@@ -78,10 +81,12 @@
 
 <script setup lang="ts">
 import { h, ref, onMounted, computed } from 'vue'
-import { useMessage, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NH3, NSwitch, useDialog } from 'naive-ui'
+import { useMessage, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NH3, NSwitch, NSelect, NDivider, useDialog } from 'naive-ui'
 import { AddOutline, CloudUploadOutline, RefreshOutline } from '@vicons/ionicons5'
-import { fetchDomains, addDomain, batchImportDomains, refreshAllDomains, refreshDomain, deleteDomain, toggleDomainAlert, batchToggleDomainAlert } from '@/api/domains'
+import { fetchDomains, addDomain, batchImportDomains, refreshAllDomains, refreshDomain, deleteDomain, toggleDomainAlert, batchToggleDomainAlert, batchSetNotificationGroup } from '@/api/domains'
+import { fetchGroups } from '@/api/notification-groups'
 import type { DomainInfo } from '@/api/domains'
+import type { NotificationGroup } from '@/api/notification-groups'
 import type { DataTableColumn } from 'naive-ui'
 
 const message = useMessage()
@@ -104,6 +109,11 @@ const addRules = {
 const showImportModal = ref(false)
 const importText = ref('')
 const checkedRowKeys = ref<number[]>([])
+const selectedNotifGroup = ref<number | null>(null)
+const notificationGroups = ref<NotificationGroup[]>([])
+const notifGroupOptions = computed(() =>
+  notificationGroups.value.map((g) => ({ label: g.name, value: g.id }))
+)
 
 function statusTag(info: DomainInfo) {
   if (info.ssl_not_after === null) {
@@ -163,8 +173,9 @@ const columns: DataTableColumn<DomainInfo>[] = [
 async function loadDomains() {
   loading.value = true
   try {
-    const resp = await fetchDomains()
-    domains.value = resp.data
+    const [domResp, grpResp] = await Promise.all([fetchDomains(), fetchGroups()])
+    domains.value = domResp.data
+    notificationGroups.value = grpResp.data
   } catch (e: any) {
     message.error(e.response?.data?.detail || '加载失败')
   } finally {
@@ -266,6 +277,17 @@ async function handleBatchToggleAlert(enabled: boolean) {
     domains.value = resp.data.domains
     checkedRowKeys.value = []
     message.success(`已${enabled ? '启用' : '停用'} ${resp.data.updated} 个域名的告警`)
+  } catch (e: any) {
+    message.error(e.response?.data?.detail || '操作失败')
+  }
+}
+
+async function handleBatchSetNotifGroup() {
+  try {
+    const resp = await batchSetNotificationGroup(checkedRowKeys.value, selectedNotifGroup.value ?? null)
+    await loadDomains()
+    checkedRowKeys.value = []
+    message.success(`已更新 ${resp.data.updated} 个域名的通知组`)
   } catch (e: any) {
     message.error(e.response?.data?.detail || '操作失败')
   }

@@ -88,6 +88,18 @@ def batch_toggle_alert(
     return {"updated": count, "domains": domains}
 
 
+@router.post("/batch-set-notification-group")
+def batch_set_notification_group(
+    body: dict,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    ids = body.get("ids", [])
+    group_id = body.get("notification_group_id")
+    count = domain_service.batch_set_notification_group(db, ids, group_id)
+    return {"updated": count}
+
+
 @router.delete("/{domain_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_domain(
     domain_id: int,

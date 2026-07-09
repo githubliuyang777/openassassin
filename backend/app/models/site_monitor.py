@@ -20,6 +20,7 @@ class SiteMonitor(Base):
     last_checked_at = Column(DateTime, nullable=True)
     last_response_ms = Column(Float, nullable=True)
     last_alerted_at = Column(DateTime, nullable=True)
+    notification_group_id = Column(Integer, ForeignKey("notification_groups.id"), nullable=True)
     created_at = Column(DateTime, default=china_now)
     updated_at = Column(DateTime, default=china_now, onupdate=china_now)
 
