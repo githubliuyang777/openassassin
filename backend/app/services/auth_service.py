@@ -33,6 +33,35 @@ def decode_token(token: str) -> dict:
     return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
 
 
+def create_mfa_token(user_id: int, username: str) -> str:
+    payload = {
+        "sub": str(user_id),
+        "username": username,
+        "scope": "mfa_required",
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=settings.totp_mfa_token_minutes),
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def create_setup_token(user_id: int, username: str, enc_secret: str) -> str:
+    payload = {
+        "sub": str(user_id),
+        "username": username,
+        "scope": "totp_setup",
+        "enc_secret": enc_secret,
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=settings.totp_setup_token_minutes),
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def decode_scoped_token(token: str, required_scope: str) -> dict:
+    from jose import JWTError
+    payload = decode_token(token)
+    if payload.get("scope") != required_scope:
+        raise JWTError(f"Token does not have required scope: {required_scope}")
+    return payload
+
+
 def authenticate(db: Session, username: str, password: str) -> User | None:
     user = db.query(User).filter(User.username == username).first()
     if not user or not verify_password(password, user.password_hash):

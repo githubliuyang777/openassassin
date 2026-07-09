@@ -28,6 +28,14 @@ def _migrate_users_table():
         ("email", "VARCHAR(128) DEFAULT ''"),
         ("reset_code", "VARCHAR(8)"),
         ("reset_code_expires_at", "DATETIME"),
+        ("totp_secret", "VARCHAR(512)"),
+        ("totp_enabled", "INTEGER DEFAULT 0"),
+        ("totp_email_code", "VARCHAR(8)"),
+        ("totp_email_code_expires_at", "DATETIME"),
+        ("totp_failed_attempts", "INTEGER DEFAULT 0"),
+        ("totp_failed_at", "DATETIME"),
+        ("backup_codes", "TEXT"),
+        ("backup_codes_used", "INTEGER DEFAULT 0"),
     ])
 
 
@@ -113,6 +121,9 @@ def _repair_stale_data():
             ("domain_whois", "alert_enabled", "1"),
             ("credentials", "alert_enabled", "1"),
             ("credentials", "type", "'generic'"),
+            ("users", "totp_enabled", "0"),
+            ("users", "totp_failed_attempts", "0"),
+            ("users", "backup_codes_used", "0"),
         ]:
             try:
                 conn.execute(text(f"UPDATE {table} SET {col} = {default} WHERE {col} IS NULL"))
