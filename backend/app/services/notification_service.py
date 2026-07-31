@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from sqlalchemy.orm import Session, joinedload
 
@@ -85,3 +85,73 @@ def get_recipient_emails(db: Session, group_id: int) -> List[str]:
         .all()
     )
     return [r.address for r in recipients if r.channel_type == "email"]
+
+
+def get_recipient_channels(db: Session, group_id: int) -> Dict[str, List[str]]:
+    """Get recipients grouped by channel_type.
+
+    Returns dict like: {'email': ['a@b.com'], 'dingtalk': ['13800138000']}
+    """
+    recipients = (
+        db.query(NotificationRecipient)
+        .filter(NotificationRecipient.group_id == group_id)
+        .all()
+    )
+    result: Dict[str, List[str]] = {}
+    for r in recipients:
+        result.setdefault(r.channel_type, []).append(r.address)
+    return result
+
+
+def send_group_notification(
+    db: Session,
+    notification_group_id: int | None,
+    fallback_email: str,
+    subject: str,
+    body: str,
+) -> None:
+    """Send notification to all recipients in a group via their channels.
+
+    Falls back to fallback_email (email only) if no group is configured.
+    Swallows errors from individual channels so one failure doesn't block others.
+    """
+    from app.config import settings
+    from app.services.email_service import send_email, EmailNotConfiguredError
+    from app.services.dingtalk_service import send_alert as send_dingtalk_alert
+
+    if notification_group_id:
+        channels = get_recipient_channels(db, notification_group_id)
+
+        # Email channel
+        for addr in channels.get("email", []):
+            try:
+                if settings.smtp_host:
+                    send_email(addr, subject, body)
+            except EmailNotConfiguredError:
+                pass
+            except Exception:
+                pass
+
+        # DingTalk channel
+        if channels.get("dingtalk"):
+            dingtalk_body = body
+            try:
+                import logging
+                send_dingtalk_alert(
+                    db,
+                    at_mobiles=channels.get("dingtalk"),
+                    title=subject,
+                    body=dingtalk_body,
+                )
+            except Exception:
+                logging.getLogger(__name__).warning(
+                    "DingTalk alert dispatch failed for group %s", notification_group_id
+                )
+    elif fallback_email:
+        try:
+            if settings.smtp_host:
+                send_email(fallback_email, subject, body)
+        except EmailNotConfiguredError:
+            pass
+        except Exception:
+            pass

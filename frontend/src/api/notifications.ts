@@ -7,3 +7,10 @@ export function sendTestEmail(email: string) {
 export function getSmtpStatus() {
   return api.get('/notifications/smtp-status').then(r => r.data)
 }
+
+export {
+  getDingTalkConfig,
+  updateDingTalkConfig,
+  getDingTalkStatus,
+  testDingTalk,
+} from './dingtalk'

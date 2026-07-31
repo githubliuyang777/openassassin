@@ -8,6 +8,8 @@ class SubscriptionCreate(BaseModel):
     repo_platform: str = "github"
     repo_owner: str = ""
     repo_name: str = ""
+    alert_enabled: bool = True
+    notification_group_id: int | None = None
 
 
 class SubscriptionUpdate(BaseModel):
@@ -16,6 +18,8 @@ class SubscriptionUpdate(BaseModel):
     repo_platform: str | None = None
     repo_owner: str | None = None
     repo_name: str | None = None
+    alert_enabled: bool | None = None
+    notification_group_id: int | None = None
 
 
 class SubscriptionResponse(BaseModel):
@@ -28,6 +32,8 @@ class SubscriptionResponse(BaseModel):
     last_version: str
     last_checked_at: datetime | None = None
     alert_count: int = 0
+    alert_enabled: bool = True
+    notification_group_id: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

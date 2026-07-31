@@ -49,7 +49,7 @@
           <n-select v-model:value="recipientForm.channel_type" :options="channelOptions" />
         </n-form-item>
         <n-form-item label="地址" required>
-          <n-input v-model:value="recipientForm.address" placeholder="如: zhangsan@example.com" />
+          <n-input v-model:value="recipientForm.address" :placeholder="recipientForm.channel_type === 'dingtalk' ? '被@人员手机号，如: 13800138000' : '如: zhangsan@example.com'" />
         </n-form-item>
         <n-form-item label="所属通知组" required>
           <n-select v-model:value="recipientForm.group_id" :options="groupSelectOptions" placeholder="选择通知组" />
@@ -116,11 +116,14 @@ const showRecipientForm = ref(false)
 const editingRecipientId = ref<number | null>(null)
 const recipientForm = ref({ name: '', channel_type: 'email', address: '', group_id: null as number | null })
 
-const channelOptions = [{ label: 'Email', value: 'email' }]
+const channelOptions = [
+  { label: 'Email', value: 'email' },
+  { label: '钉钉', value: 'dingtalk' },
+]
 
 const recipientColumns = [
   { title: '名称', key: 'name', ellipsis: true },
-  { title: '渠道', key: 'channel_type', width: 80, render: (r: NotificationRecipient) => r.channel_type.toUpperCase() },
+  { title: '渠道', key: 'channel_type', width: 80, render: (r: NotificationRecipient) => r.channel_type === 'dingtalk' ? '钉钉' : r.channel_type.toUpperCase() },
   { title: '地址', key: 'address', ellipsis: true },
   {
     title: '所属组', key: 'group_id', width: 120,

@@ -10,6 +10,8 @@ export interface Subscription {
   last_version: string
   last_checked_at: string | null
   alert_count: number
+  alert_enabled: boolean
+  notification_group_id: number | null
   created_at: string
   updated_at: string
 }
@@ -20,6 +22,8 @@ export interface SubscriptionCreate {
   repo_platform: string
   repo_owner: string
   repo_name: string
+  alert_enabled?: boolean
+  notification_group_id?: number | null
 }
 
 export interface SubscriptionAlert {

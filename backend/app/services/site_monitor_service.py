@@ -175,31 +175,17 @@ def run_single_check(monitor: SiteMonitor) -> SiteCheckResult:
         db.close()
 
 
-def _get_alert_emails(db: Session, monitor: SiteMonitor) -> list[str]:
-    from app.config import settings
-    if monitor.notification_group_id:
-        from app.services.notification_service import get_recipient_emails
-        emails = get_recipient_emails(db, monitor.notification_group_id)
-        if emails:
-            return emails
-    return [settings.alert_email] if settings.alert_email else []
-
-
 def _send_down_alert(db: Session, monitor: SiteMonitor, error: str | None) -> None:
     from datetime import timedelta
     from app.config import settings
-    if not settings.smtp_host:
-        return
     if not monitor.alert_enabled:
         return
     now = china_now()
     if monitor.last_alerted_at and monitor.last_alerted_at > now - timedelta(hours=1):
         return  # already alerted within 1 hour
-    emails = _get_alert_emails(db, monitor)
-    if not emails:
-        return
     try:
-        from app.services.email_service import send_email
+        from app.services.notification_service import send_group_notification
+        now_str = now.strftime('%Y-%m-%d %H:%M')
         subject = f"[openAssassin] 站点不可达: {monitor.name}"
         body = f"""站点监控告警
 
@@ -207,12 +193,14 @@ def _send_down_alert(db: Session, monitor: SiteMonitor, error: str | None) -> No
 目标: {monitor.target}
 类型: {monitor.monitor_type.upper()}
 错误: {error or '连接失败'}
-时间: {now.strftime('%Y-%m-%d %H:%M')} (北京时间)
+时间: {now_str} (北京时间)
 
 openAssassin 站点监控
 """
-        for addr in emails:
-            send_email(addr, subject, body)
+        send_group_notification(
+            db, monitor.notification_group_id,
+            settings.alert_email, subject, body,
+        )
         monitor.last_alerted_at = now
         db.commit()
     except Exception:
@@ -221,15 +209,10 @@ openAssassin 站点监控
 
 def _send_up_alert(db: Session, monitor: SiteMonitor) -> None:
     from app.config import settings
-    if not settings.smtp_host:
-        return
     if not monitor.alert_enabled:
         return
-    emails = _get_alert_emails(db, monitor)
-    if not emails:
-        return
     try:
-        from app.services.email_service import send_email
+        from app.services.notification_service import send_group_notification
         now = china_now()
         subject = f"[openAssassin] 站点已恢复: {monitor.name}"
         body = f"""站点监控恢复通知
@@ -242,8 +225,10 @@ def _send_up_alert(db: Session, monitor: SiteMonitor) -> None:
 
 openAssassin 站点监控
 """
-        for addr in emails:
-            send_email(addr, subject, body)
+        send_group_notification(
+            db, monitor.notification_group_id,
+            settings.alert_email, subject, body,
+        )
     except Exception:
         pass
 

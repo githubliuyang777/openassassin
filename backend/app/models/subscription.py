@@ -14,6 +14,8 @@ class Subscription(Base):
     last_version = Column(String(64), default="")
     last_advisory_ghsa_id = Column(String(32), default="")
     last_checked_at = Column(DateTime, nullable=True)
+    alert_enabled = Column(Boolean, default=True)
+    notification_group_id = Column(Integer, ForeignKey("notification_groups.id"), nullable=True)
     created_at = Column(DateTime, default=china_now)
     updated_at = Column(DateTime, default=china_now, onupdate=china_now)
 
