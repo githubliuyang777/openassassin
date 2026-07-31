@@ -9,7 +9,7 @@ from app.middleware.audit_middleware import AuditMiddleware
 from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.services.auth_service import get_or_create_admin
-from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors, notification_groups, notification_recipients
+from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors, notification_groups, notification_recipients, dingtalk
 
 
 def _migrate(table: str, columns: list[tuple[str, str]]):
@@ -45,6 +45,7 @@ def _migrate_credentials_table():
         ("expires_at", "DATETIME"),
         ("alert_enabled", "BOOLEAN DEFAULT 1"),
         ("last_alerted_at", "DATETIME"),
+        ("notification_group_id", "INTEGER"),
     ])
 
 
@@ -83,6 +84,8 @@ def _migrate_subscriptions_table():
         ("last_advisory_ghsa_id", "VARCHAR(32) DEFAULT ''"),
         ("last_checked_at", "DATETIME"),
         ("updated_at", "DATETIME"),
+        ("alert_enabled", "BOOLEAN DEFAULT 1"),
+        ("notification_group_id", "INTEGER"),
     ])
     _migrate("subscription_alerts", [
         ("ref_id", "VARCHAR(64) DEFAULT ''"),
@@ -120,6 +123,7 @@ def _repair_stale_data():
             ("domains", "alert_enabled", "1"),
             ("domain_whois", "alert_enabled", "1"),
             ("credentials", "alert_enabled", "1"),
+            ("subscriptions", "alert_enabled", "1"),
             ("credentials", "type", "'generic'"),
             ("users", "totp_enabled", "0"),
             ("users", "totp_failed_attempts", "0"),
@@ -341,6 +345,7 @@ app.include_router(notepads.router, prefix="/api/v1")
 app.include_router(site_monitors.router, prefix="/api/v1")
 app.include_router(notification_groups.router, prefix="/api/v1")
 app.include_router(notification_recipients.router, prefix="/api/v1")
+app.include_router(dingtalk.router, prefix="/api/v1")
 
 
 @app.get("/api/health")

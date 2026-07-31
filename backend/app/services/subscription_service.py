@@ -28,7 +28,10 @@ def list_subscriptions(db: Session) -> list[dict]:
             "id": s.id, "name": s.name, "repo_url": s.repo_url,
             "repo_platform": s.repo_platform, "repo_owner": s.repo_owner, "repo_name": s.repo_name,
             "last_version": s.last_version, "last_checked_at": s.last_checked_at,
-            "alert_count": alert_count, "created_at": s.created_at, "updated_at": s.updated_at,
+            "alert_count": alert_count,
+            "alert_enabled": getattr(s, 'alert_enabled', True),
+            "notification_group_id": getattr(s, 'notification_group_id', None),
+            "created_at": s.created_at, "updated_at": s.updated_at,
         })
     return results
 

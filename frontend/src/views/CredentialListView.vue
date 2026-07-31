@@ -43,9 +43,12 @@
           <n-space align="center">
             <n-switch v-model:value="createForm.alert_enabled" />
             <n-text depth="3" style="font-size:12px">
-              {{ createForm.alert_enabled ? '到期前 7 天邮件通知' : '不通知' }}
+              {{ createForm.alert_enabled ? '到期前 7 天发送通知' : '不通知' }}
             </n-text>
           </n-space>
+        </n-form-item>
+        <n-form-item v-if="createForm.alert_enabled" path="notification_group_id" label="通知组">
+          <n-select v-model:value="createForm.notification_group_id" :options="groupOptions" placeholder="选择通知组（选填）" clearable style="width: 100%" />
         </n-form-item>
         <n-form-item path="description" label="描述">
           <n-input v-model:value="createForm.description" placeholder="用途说明" />
@@ -98,6 +101,8 @@ import {
   fetchCredentials, createCredential, revealCredential, deleteCredential, toggleCredentialAlert,
   type Credential, type CredentialReveal, CREDENTIAL_TYPES, getTypeLabel,
 } from '@/api/credentials'
+import { fetchGroups } from '@/api/notification-groups'
+import type { NotificationGroup } from '@/api/notification-groups'
 
 const message = useMessage()
 
@@ -111,13 +116,18 @@ const parsingKc = ref(false)
 const deleting_loading = ref(false)
 const deleting = ref<Credential | null>(null)
 const revealed = ref<CredentialReveal | null>(null)
+const groups = ref<NotificationGroup[]>([])
 
 const typeOptions = CREDENTIAL_TYPES.map(t => ({ label: t.label, value: t.value }))
+const groupOptions = computed(() =>
+  groups.value.map((g) => ({ label: g.name, value: g.id }))
+)
 
 const createForm = ref({
   name: '', key: '', value: '', description: '',
   type: 'generic', expires_at: null as string | null,
   alert_enabled: true,
+  notification_group_id: null as number | null,
 })
 const createFormRef = ref()
 const createRules = {
@@ -234,6 +244,13 @@ async function load() {
   }
 }
 
+async function loadGroups() {
+  try {
+    const resp = await fetchGroups()
+    groups.value = resp.data
+  } catch { /* ignore */ }
+}
+
 async function handleCreate() {
   const valid = await createFormRef.value?.validate().catch(() => false)
   if (!valid) return
@@ -244,7 +261,7 @@ async function handleCreate() {
     await createCredential(payload)
     message.success('创建成功')
     showCreate.value = false
-    createForm.value = { name: '', key: '', value: '', description: '', type: 'generic', expires_at: null, alert_enabled: true }
+    createForm.value = { name: '', key: '', value: '', description: '', type: 'generic', expires_at: null, alert_enabled: true, notification_group_id: null }
     load()
   } catch (e: any) {
     message.error(e.message)
@@ -278,5 +295,8 @@ async function confirmDelete() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadGroups()
+})
 </script>

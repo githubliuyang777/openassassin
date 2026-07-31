@@ -41,6 +41,12 @@
         <div v-if="lookupResult.latest_version" style="font-size: 12px; color: #18a058">
           当前最新版本: {{ lookupResult.latest_version }}
         </div>
+        <n-form-item path="alert_enabled" label="新版本/漏洞告警">
+          <n-switch v-model:value="form.alert_enabled" />
+        </n-form-item>
+        <n-form-item v-if="form.alert_enabled" path="notification_group_id" label="通知组">
+          <n-select v-model:value="form.notification_group_id" :options="groupOptions" placeholder="选择通知组（选填）" clearable style="width: 100%" />
+        </n-form-item>
       </n-form>
       <template #footer>
         <n-space justify="end">
@@ -77,11 +83,13 @@
 </template>
 
 <script setup lang="ts">
-import { h, ref, reactive, onMounted } from 'vue'
-import { useMessage, NTag, NButton, NIcon, NText, NSpace, NForm, NFormItem, NInput, NSelect, NH3, NDataTable, NModal, NGrid, NGridItem, NList, NListItem, useDialog } from 'naive-ui'
+import { h, ref, reactive, computed, onMounted } from 'vue'
+import { useMessage, NTag, NButton, NIcon, NText, NSpace, NForm, NFormItem, NInput, NSelect, NH3, NDataTable, NModal, NGrid, NGridItem, NList, NListItem, NSwitch, useDialog } from 'naive-ui'
 import { AddOutline } from '@vicons/ionicons5'
 import { fetchSubscriptions, createSubscription, updateSubscription, deleteSubscription, fetchAlerts, markAlertRead, lookupRepo } from '@/api/subscriptions'
 import type { Subscription, SubscriptionCreate, SubscriptionAlert, RepoLookupResult } from '@/api/subscriptions'
+import { fetchGroups } from '@/api/notification-groups'
+import type { NotificationGroup } from '@/api/notification-groups'
 import type { DataTableColumn } from 'naive-ui'
 
 const message = useMessage()
@@ -93,8 +101,13 @@ const saving = ref(false)
 const showForm = ref(false)
 const showAlerts = ref(false)
 const editingId = ref<number | null>(null)
+const groups = ref<NotificationGroup[]>([])
 
-const form = ref<SubscriptionCreate>({ name: '', repo_url: '', repo_platform: 'github', repo_owner: '', repo_name: '' })
+const groupOptions = computed(() =>
+  groups.value.map((g) => ({ label: g.name, value: g.id }))
+)
+
+const form = ref<SubscriptionCreate>({ name: '', repo_url: '', repo_platform: 'github', repo_owner: '', repo_name: '', alert_enabled: true, notification_group_id: null })
 const formRef = ref()
 const formRules = {
   name: [{ required: true, message: '请输入组件名称' }],
@@ -156,14 +169,14 @@ async function handleLookup() {
 
 function openCreate() {
   editingId.value = null
-  form.value = { name: '', repo_url: '', repo_platform: 'github', repo_owner: '', repo_name: '' }
+  form.value = { name: '', repo_url: '', repo_platform: 'github', repo_owner: '', repo_name: '', alert_enabled: true, notification_group_id: null }
   lookupResult.value = { repo_owner: '', repo_name: '', repo_platform: '', description: '', latest_version: '' }
   showForm.value = true
 }
 
 function handleEdit(row: Subscription) {
   editingId.value = row.id
-  form.value = { name: row.name, repo_url: row.repo_url, repo_platform: row.repo_platform, repo_owner: row.repo_owner, repo_name: row.repo_name }
+  form.value = { name: row.name, repo_url: row.repo_url, repo_platform: row.repo_platform, repo_owner: row.repo_owner, repo_name: row.repo_name, alert_enabled: row.alert_enabled, notification_group_id: row.notification_group_id }
   showForm.value = true
 }
 
@@ -219,5 +232,15 @@ async function handleMarkRead(alertId: number) {
   } catch (_e) { /* ignore */ }
 }
 
-onMounted(loadSubs)
+async function loadGroups() {
+  try {
+    const resp = await fetchGroups()
+    groups.value = resp.data
+  } catch { /* ignore */ }
+}
+
+onMounted(() => {
+  loadSubs()
+  loadGroups()
+})
 </script>

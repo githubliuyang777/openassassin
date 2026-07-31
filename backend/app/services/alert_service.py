@@ -155,8 +155,7 @@ def get_all_alerts(db: Session) -> list[dict]:
 
 def check_and_alert(db: Session) -> int:
     """Check for credentials nearing expiry and send alerts. Returns count of alerts sent."""
-    if not settings.alert_email or not settings.smtp_host:
-        return 0
+    from app.services.notification_service import send_group_notification
 
     now = china_now()
     threshold = now + timedelta(days=settings.alert_before_days)
@@ -175,7 +174,6 @@ def check_and_alert(db: Session) -> int:
         if cred.last_alerted_at and cred.last_alerted_at > now - timedelta(days=1):
             continue  # already alerted within 24h
         try:
-            from app.services.email_service import send_email
             days_left = (cred.expires_at - now).days
             subject = f"[openAssassin] 密钥即将过期: {cred.name}"
             body = f"""密钥 "{cred.name}" 即将过期。
@@ -187,7 +185,10 @@ def check_and_alert(db: Session) -> int:
 
 请及时更新密钥，以免影响服务运行。
 """
-            send_email(settings.alert_email, subject, body)
+            send_group_notification(
+                db, getattr(cred, 'notification_group_id', None),
+                settings.alert_email, subject, body,
+            )
             cred.last_alerted_at = now
             db.commit()
             sent += 1

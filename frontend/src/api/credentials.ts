@@ -8,6 +8,7 @@ export interface Credential {
   type: string
   expires_at: string | null
   alert_enabled: boolean
+  notification_group_id: number | null
   created_at: string
   updated_at: string
 }
@@ -23,6 +24,7 @@ export function fetchCredentials() {
 export function createCredential(data: {
   name: string; key: string; value: string; description: string
   type?: string; expires_at?: string | null; alert_enabled?: boolean
+  notification_group_id?: number | null
 }) {
   return api.post('/credentials', data)
 }
@@ -33,6 +35,7 @@ export function revealCredential(id: number) {
 
 export function updateCredential(id: number, data: {
   description?: string; type?: string; expires_at?: string | null; alert_enabled?: boolean
+  notification_group_id?: number | null
 }) {
   return api.put<Credential>(`/credentials/${id}`, data)
 }
