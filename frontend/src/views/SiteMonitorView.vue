@@ -205,7 +205,10 @@ const selectedGroupChannels = computed(() => {
   const group = notificationGroups.value.find((g) => g.id === form.value.notification_group_id)
   if (!group || !group.recipients) return []
   const types = [...new Set(group.recipients.map((r) => r.channel_type))]
-  return types.map((t) => channelLabelMap[t] || { label: t, type: 'default' as const }).filter(Boolean)
+  return types.map((t) => {
+    const info = channelLabelMap[t] || { label: t, type: 'default' as const }
+    return { ...info, value: t }
+  })
 })
 
 const rules = {
