@@ -112,7 +112,7 @@ def send_test_message(db: Session) -> dict:
     config = get_config(db)
     if not config.webhook_url:
         raise DingTalkNotConfiguredError("钉钉未配置，请先在消息通知页面设置 Webhook 地址和密钥")
-    content = "openAssassin 钉钉通知测试 — 连接成功！"
+    content = "【告警】openAssassin 钉钉告警通知测试 — 连接成功！"
     return send_text(config.webhook_url, config.secret, content)
 
 
@@ -134,7 +134,7 @@ def send_alert(db: Session, at_mobiles: list[str] | None, title: str, body: str)
     if at_mobiles:
         at_str = "\n> @" + " @".join(at_mobiles)
 
-    content = f"## {title}\n\n{body}{at_str}"
+    content = f"【告警】{title}\n\n{body}{at_str}"
 
     try:
         send_text(config.webhook_url, config.secret, content)
