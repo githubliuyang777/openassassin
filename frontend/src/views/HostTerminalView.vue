@@ -131,9 +131,12 @@ async function doConnect() {
   resizeObserver.observe(termRef.value)
 
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const wsUrl = `${protocol}//${location.host}/api/v1/hosts/${hostId}/terminal?token=${auth.token}`
+  // Pass the JWT via the Sec-WebSocket-Protocol header instead of the URL
+  // query string — query parameters leak into proxy/access logs and browser
+  // history. The backend echoes the subprotocol on accept.
+  const wsUrl = `${protocol}//${location.host}/api/v1/hosts/${hostId}/terminal`
 
-  ws = new WebSocket(wsUrl)
+  ws = new WebSocket(wsUrl, [auth.token])
   ws.binaryType = 'arraybuffer'
 
   ws.onopen = () => {

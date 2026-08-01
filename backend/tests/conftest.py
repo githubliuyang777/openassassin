@@ -38,6 +38,15 @@ def setup_db():
     Base.metadata.drop_all(bind=engine)
 
 
+@pytest.fixture(autouse=True)
+def reset_rate_limits():
+    """Clear in-memory rate-limit buckets between tests."""
+    from app.services import rate_limit
+    rate_limit.reset()
+    yield
+    rate_limit.reset()
+
+
 @pytest.fixture
 def client():
     return TestClient(app)

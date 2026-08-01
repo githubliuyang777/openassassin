@@ -76,6 +76,10 @@ def _resolve_ip_location(ip: str) -> str:
     for prefix in _PRIVATE_PREFIXES:
         if ip.startswith(prefix):
             return "内网"
+    # Sending client IPs to a third-party geolocation service leaks them
+    # off-host; disabled unless explicitly enabled via AUDIT_IP_GEOLOCATION.
+    if not settings.audit_ip_geolocation:
+        return "未知"
     try:
         from urllib.request import Request, urlopen
         url = f"http://ip-api.com/json/{ip}?lang=zh-CN&fields=country,regionName,city"

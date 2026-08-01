@@ -233,3 +233,69 @@ class TestForgotPassword:
         })
         assert resp.status_code == 400
 
+
+
+class TestLoginRateLimit:
+    def test_login_locked_after_repeated_failures(self, client, admin_user):
+        for _ in range(5):
+            resp = client.post("/api/v1/auth/login", json={"username": "admin", "password": "wrong"})
+            assert resp.status_code == 401
+        resp = client.post("/api/v1/auth/login", json={"username": "admin", "password": "wrong"})
+        assert resp.status_code == 429
+        assert "Retry-After" in resp.headers
+
+    def test_successful_login_resets_failures(self, client, admin_user):
+        # 上限为 5 次失败：第 5 次之后即被锁定，因此用 4 次失败来观察"成功登录重置计数"
+        for _ in range(4):
+            client.post("/api/v1/auth/login", json={"username": "admin", "password": "wrong"})
+        # correct password resets the per-user bucket
+        resp = client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
+        assert resp.status_code == 200
+        resp = client.post("/api/v1/auth/login", json={"username": "admin", "password": "wrong"})
+        assert resp.status_code == 401
+
+    def test_correct_password_also_locked_after_limit(self, client, admin_user):
+        """达到失败上限后，即使密码正确也应被 429 拦截（限流检查先于认证）。"""
+        for _ in range(5):
+            client.post("/api/v1/auth/login", json={"username": "admin", "password": "wrong"})
+        resp = client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
+        assert resp.status_code == 429
+
+    def test_login_ip_bucket(self, client, admin_user):
+        # 30 failures per IP are allowed across usernames, then blocked
+        for i in range(30):
+            client.post("/api/v1/auth/login", json={"username": f"user{i}", "password": "wrong"})
+        resp = client.post("/api/v1/auth/login", json={"username": "admin", "password": "wrong"})
+        assert resp.status_code == 429
+
+
+class TestResetPasswordRateLimit:
+    def test_reset_locked_after_repeated_failures(self, client, admin_user):
+        payload = {"email": "admin@test.com", "code": "000000", "new_password": "newpass123"}
+        for _ in range(5):
+            assert client.post("/api/v1/auth/reset-password", json=payload).status_code == 400
+        resp = client.post("/api/v1/auth/reset-password", json=payload)
+        assert resp.status_code == 429
+
+
+class TestTokenRevocation:
+    def test_old_token_invalid_after_password_change(self, client, auth_headers, admin_user):
+        assert client.get("/api/v1/auth/me", headers=auth_headers).status_code == 200
+        resp = client.put("/api/v1/auth/password", json={
+            "old_password": "admin", "new_password": "newpass123",
+        }, headers=auth_headers)
+        assert resp.status_code == 200
+        # the previously issued JWT must now be rejected
+        resp = client.get("/api/v1/auth/me", headers=auth_headers)
+        assert resp.status_code == 401
+
+    def test_new_token_works_after_password_change(self, client, auth_headers, admin_user):
+        client.put("/api/v1/auth/password", json={
+            "old_password": "admin", "new_password": "newpass123",
+        }, headers=auth_headers)
+        login = client.post("/api/v1/auth/login", json={
+            "username": "admin", "password": "newpass123",
+        })
+        assert login.status_code == 200
+        new_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        assert client.get("/api/v1/auth/me", headers=new_headers).status_code == 200

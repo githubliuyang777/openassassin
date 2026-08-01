@@ -68,7 +68,14 @@
         <n-descriptions-item label="类型">{{ getTypeLabel(revealed.type) }}</n-descriptions-item>
         <n-descriptions-item label="环境变量">${{ revealed.key }}</n-descriptions-item>
         <n-descriptions-item label="值">
-          <n-text code>{{ revealed.value }}</n-text>
+          <!-- Mask plaintext by default; reveal only on explicit user action -->
+          <n-space align="center">
+            <n-text code>{{ showValue ? revealed.value : '••••••••••••' }}</n-text>
+            <n-button size="tiny" @click="showValue = !showValue">
+              {{ showValue ? '隐藏' : '显示' }}
+            </n-button>
+            <n-button size="tiny" @click="copyValue">复制</n-button>
+          </n-space>
         </n-descriptions-item>
         <n-descriptions-item v-if="revealed.expires_at" label="有效期">
           {{ formatExpiry(revealed.expires_at) }}
@@ -89,8 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, h, computed, onMounted } from 'vue'
-import axios from 'axios'
+import { ref, h, computed, onMounted, watch } from 'vue'
 import {
   NH3, NSpace, NButton, NIcon, NDataTable, NModal, NForm, NFormItem,
   NInput, NSelect, NDatePicker, NGrid, NGridItem, NSwitch,
@@ -99,6 +105,7 @@ import {
 import { AddOutline, AlertCircleOutline } from '@vicons/ionicons5'
 import {
   fetchCredentials, createCredential, revealCredential, deleteCredential, toggleCredentialAlert,
+  parseKubeconfig,
   type Credential, type CredentialReveal, CREDENTIAL_TYPES, getTypeLabel,
 } from '@/api/credentials'
 import { fetchGroups } from '@/api/notification-groups'
@@ -116,7 +123,15 @@ const parsingKc = ref(false)
 const deleting_loading = ref(false)
 const deleting = ref<Credential | null>(null)
 const revealed = ref<CredentialReveal | null>(null)
+const showValue = ref(false)
 const groups = ref<NotificationGroup[]>([])
+
+// Re-mask the value each time the reveal modal opens
+watch(showReveal, (open) => {
+  if (!open) {
+    showValue.value = false
+  }
+})
 
 const typeOptions = CREDENTIAL_TYPES.map(t => ({ label: t.label, value: t.value }))
 const groupOptions = computed(() =>
@@ -222,15 +237,23 @@ async function handleParseKubeconfig() {
   }
   parsingKc.value = true
   try {
-    const resp = await axios.post('/api/v1/credentials/parse-kubeconfig', {
-      value: createForm.value.value,
-    })
+    const resp = await parseKubeconfig(createForm.value.value)
     createForm.value.expires_at = resp.data.expires_at
     message.success(`已解析有效期: ${formatExpiry(resp.data.expires_at)} (剩余 ${resp.data.days_left} 天)`)
   } catch (e: any) {
-    message.error(e.response?.data?.detail || '解析失败')
+    message.error(e.response?.data?.detail || e.message || '解析失败')
   } finally {
     parsingKc.value = false
+  }
+}
+
+async function copyValue() {
+  if (!revealed.value) return
+  try {
+    await navigator.clipboard.writeText(revealed.value.value)
+    message.success('已复制到剪贴板')
+  } catch {
+    message.error('复制失败，请手动选择复制')
   }
 }
 

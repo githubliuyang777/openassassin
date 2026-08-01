@@ -36,6 +36,7 @@ def _migrate_users_table():
         ("totp_failed_at", "DATETIME"),
         ("backup_codes", "TEXT"),
         ("backup_codes_used", "INTEGER DEFAULT 0"),
+        ("token_version", "INTEGER DEFAULT 0"),
     ])
 
 
@@ -128,6 +129,7 @@ def _repair_stale_data():
             ("users", "totp_enabled", "0"),
             ("users", "totp_failed_attempts", "0"),
             ("users", "backup_codes_used", "0"),
+            ("users", "token_version", "0"),
         ]:
             try:
                 conn.execute(text(f"UPDATE {table} SET {col} = {default} WHERE {col} IS NULL"))
@@ -152,6 +154,22 @@ def _repair_stale_data():
             conn.execute(text(
                 "UPDATE hosts SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''"
             ))
+        except Exception:
+            pass
+
+        # Encrypt any legacy plaintext DingTalk webhook secrets at rest
+        try:
+            from app.services.credential_service import encrypt as _enc
+            from app.services.dingtalk_service import is_encrypted
+            rows = conn.execute(text(
+                "SELECT id, secret FROM dingtalk_config WHERE secret IS NOT NULL AND secret != ''"
+            )).fetchall()
+            for rid, sec in rows:
+                if sec and not is_encrypted(sec):
+                    conn.execute(
+                        text("UPDATE dingtalk_config SET secret = :s WHERE id = :i"),
+                        {"s": _enc(sec), "i": rid},
+                    )
         except Exception:
             pass
 
@@ -241,7 +259,8 @@ async def _subscription_check_loop():
                 last_run = getattr(_subscription_check_loop, "_last_run_date", "")
                 if last_run == today:
                     continue
-                check_all_subscriptions()
+                # run in a thread so blocking network calls don't stall the event loop
+                await asyncio.to_thread(check_all_subscriptions)
                 _subscription_check_loop._last_run_date = today
             finally:
                 db.close()
@@ -257,7 +276,7 @@ async def _audit_cleanup_loop():
             from app.services.audit_service import cleanup_old_logs
             db = SessionLocal()
             try:
-                cleanup_old_logs(db)
+                await asyncio.to_thread(cleanup_old_logs, db)
             finally:
                 db.close()
         except Exception:
@@ -272,7 +291,7 @@ async def _alert_check_loop():
             from app.services.alert_service import check_and_alert
             db = SessionLocal()
             try:
-                check_and_alert(db)
+                await asyncio.to_thread(check_and_alert, db)
             finally:
                 db.close()
         except Exception:
@@ -285,7 +304,9 @@ async def _site_monitor_check_loop():
         await asyncio.sleep(30)
         try:
             from app.services.site_monitor_service import check_all_monitors
-            check_all_monitors()
+            # site monitor checks perform blocking HTTP requests every 30s;
+            # offload to a worker thread so the event loop stays responsive
+            await asyncio.to_thread(check_all_monitors)
         except Exception:
             pass
 
@@ -320,9 +341,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="openAssassin", version="0.1.0", lifespan=lifespan)
 
+# CORS: explicit allowlist only. `*` with credentials is invalid per the CORS
+# spec (browsers reject it) and effectively opens the API to every origin.
+# Production is same-origin via the nginx proxy, so the default list only
+# covers local development origins.
+_cors_origins = settings.cors_origin_list
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -58,6 +58,11 @@ def execute_script(
             nano_cpus=int(settings.sandbox_cpu_limit * 1e9),
             network_mode="none",
             read_only=True,
+            cap_drop=["ALL"],                       # no capabilities at all
+            pids_limit=128,                         # fork-bomb guard
+            user="nobody",                          # non-root inside container
+            tmpfs={"/tmp": "size=64m"},             # writable scratch, no disk leak
+            security_opt=["no-new-privileges:true"],
             detach=True,
         )
 

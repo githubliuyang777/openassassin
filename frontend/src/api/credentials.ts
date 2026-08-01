@@ -33,6 +33,10 @@ export function revealCredential(id: number) {
   return api.get<CredentialReveal>(`/credentials/${id}`)
 }
 
+export function parseKubeconfig(value: string) {
+  return api.post<{ expires_at: string; days_left: number }>('/credentials/parse-kubeconfig', { value })
+}
+
 export function updateCredential(id: number, data: {
   description?: string; type?: string; expires_at?: string | null; alert_enabled?: boolean
   notification_group_id?: number | null

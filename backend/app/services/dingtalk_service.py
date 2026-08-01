@@ -9,6 +9,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.models.dingtalk import DingTalkConfig
+from app.services.credential_service import encrypt, decrypt
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,31 @@ logger = logging.getLogger(__name__)
 class DingTalkNotConfiguredError(Exception):
     """Raised when DingTalk bot is not configured."""
     pass
+
+
+def is_encrypted(value: str) -> bool:
+    """Detect whether a stored value is an AES-GCM payload (nonce_hex:ct_hex)."""
+    if not value or ":" not in value:
+        return False
+    nonce, ct = value.split(":", 1)
+    try:
+        return len(bytes.fromhex(nonce)) == 12 and len(bytes.fromhex(ct)) > 0
+    except ValueError:
+        return False
+
+
+def _encrypt_secret(secret: str) -> str:
+    """Encrypt a DingTalk webhook secret before storing. Idempotent."""
+    if not secret or is_encrypted(secret):
+        return secret
+    return encrypt(secret)
+
+
+def _decrypt_secret(secret: str) -> str:
+    """Decrypt a stored secret; tolerate legacy plaintext values."""
+    if not secret or not is_encrypted(secret):
+        return secret
+    return decrypt(secret)
 
 
 def _build_sign(timestamp_ms: int, secret: str) -> str:
@@ -73,12 +99,12 @@ def get_status(db: Session) -> dict:
 
 def update_config(db: Session, webhook_url: str | None = None,
                   secret: str | None = None, is_enabled: bool | None = None) -> DingTalkConfig:
-    """Update DingTalk configuration."""
+    """Update DingTalk configuration (webhook secret is encrypted at rest)."""
     config = get_config(db)
     if webhook_url is not None:
         config.webhook_url = webhook_url
     if secret is not None:
-        config.secret = secret
+        config.secret = _encrypt_secret(secret)
     if is_enabled is not None:
         config.is_enabled = is_enabled
     db.commit()
@@ -113,7 +139,8 @@ def send_test_message(db: Session) -> dict:
     if not config.webhook_url:
         raise DingTalkNotConfiguredError("钉钉未配置，请先在消息通知页面设置 Webhook 地址和密钥")
     content = "【告警】openAssassin 钉钉告警通知测试 — 连接成功！"
-    return send_text(config.webhook_url, config.secret, content)
+    # decrypt in memory only; never write the plaintext secret back to disk
+    return send_text(config.webhook_url, _decrypt_secret(config.secret), content)
 
 
 def send_alert(db: Session, at_mobiles: list[str] | None, title: str, body: str) -> None:
@@ -137,6 +164,6 @@ def send_alert(db: Session, at_mobiles: list[str] | None, title: str, body: str)
     content = f"【告警】{title}\n\n{body}{at_str}"
 
     try:
-        send_text(config.webhook_url, config.secret, content)
+        send_text(config.webhook_url, _decrypt_secret(config.secret), content)
     except Exception as e:
         logger.warning("DingTalk alert delivery failed: %s", e)
