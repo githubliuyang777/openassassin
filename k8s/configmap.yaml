@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: ops
+data:
+  DATABASE_URL: "sqlite:///./data/ops.db"
+  SANDBOX_IMAGE_SHELL: "alpine:3.20"
+  SANDBOX_IMAGE_PYTHON: "python:3.12-alpine"
+  SANDBOX_MEMORY_LIMIT: "256m"
+  SANDBOX_CPU_LIMIT: "0.5"
+  SANDBOX_DEFAULT_TIMEOUT: "300"
+  SANDBOX_MAX_TIMEOUT: "3600"
+  ALERT_BEFORE_DAYS: "7"
+  ALERT_CHECK_INTERVAL_MINUTES: "60"
+  SSH_CONNECT_TIMEOUT: "10"
+  SSH_TERMINAL_IDLE_TIMEOUT: "3600"
+  AUDIT_ENABLED: "true"
+  AUDIT_IP_SOURCE: "forwarded"
+  AUDIT_LOG_RETENTION_DAYS: "180"
+  TOTP_ISSUER: "openAssassin"
+  LOG_DIR: "/app/data/logs"

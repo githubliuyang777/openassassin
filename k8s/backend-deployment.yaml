@@ -1,0 +1,108 @@
+# openAssassin Backend Deployment
+# 约束: SQLite 单副本 (replicas: 1); 需要 Docker daemon 节点
+# 后续演进: 用 batch/v1 Job 替代 Docker SDK, 彻底移除 socket 依赖
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: ops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      nodeSelector:
+        ops-node: "true"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: backend
+          image: infra-ops-backend:latest
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: backend-secret
+          env:
+            - name: DOCKER_HOST
+              value: "tcp://127.0.0.1:2375"
+            - name: SANDBOX_TMP_DIR
+              value: "/sandbox-tmp"
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 500m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 512Mi
+          ports:
+            - containerPort: 8000
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: sandbox-tmp
+              mountPath: /sandbox-tmp
+            - name: tmp
+              mountPath: /tmp
+        - name: docker-socket-proxy
+          image: tecnativa/docker-socket-proxy:latest
+          env:
+            - name: CONTAINERS
+              value: "1"
+            - name: IMAGES
+              value: "1"
+            - name: GET
+              value: "1"
+            - name: POST
+              value: "1"
+            - name: DELETE
+              value: "1"
+            - name: PING
+              value: "1"
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - containerPort: 2375
+          volumeMounts:
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: ops-data
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+        - name: sandbox-tmp
+          hostPath:
+            path: /tmp/openassassin-sandbox
+            type: DirectoryOrCreate
+        - name: tmp
+          emptyDir: {}
