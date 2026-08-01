@@ -1,6 +1,6 @@
 # openAssassin
 
-开源刺客平台 — 管理员登录、管理脚本(Shell/Python)、引用密钥执行、查看日志，支持 TOTP 双因素认证。Docker Compose 一键部署。
+开源刺客平台 — 管理员登录、管理脚本(Shell/Python)、引用密钥执行、查看日志，支持 TOTP 双因素认证、登录限流、JWT 撤销、密钥加密存储。Docker Compose 一键部署。
 
 ## 快速开始
 
@@ -26,6 +26,19 @@ open http://localhost:8080
 ## 界面预览
 
 ![openAssassin 仪表盘](assets/screenshot.png)
+
+## 安全特性
+
+| 特性 | 说明 |
+|------|------|
+| 登录限流 | 按用户名+IP 限制 5次/5分钟，全局 IP 30次/5分钟，超限返回 429 |
+| JWT 撤销 | 修改密码后旧 token 立即失效（token_version 机制） |
+| 密钥加密 | AES-256-GCM 加密存储凭据值，UI 默认掩码显示，支持一键复制 |
+| 密钥掩码 | 沙箱执行日志自动掩码密钥值，DingTalk webhook secret 加密存库 |
+| WebSocket 安全 | Token 通过 Sec-WebSocket-Protocol 头传递，不进 URL 参数 |
+| CORS 白名单 | 可配置允许的跨域来源，默认仅本地开发源 |
+| 沙箱加固 | Docker 容器 cap_drop=ALL、pids_limit=128、user=nobody、read_only、network=none |
+| 审计 IP 保护 | 默认关闭 IP 归属地外部查询，私网 IP 不外发 |
 
 ## 功能概览
 
@@ -73,17 +86,23 @@ openassassin/
 │   │   ├── api/                    # REST 路由
 │   │   ├── services/               # 业务逻辑 + 沙箱 + 加密 + 邮件
 │   │   └── middleware/             # JWT Bearer 鉴权
-│   ├── tests/                      # pytest 测试 (124 用例)
+│   ├── tests/                      # pytest 测试 (187 用例)
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
 │   │   ├── router/                 # Vue Router + beforeEach 守卫
 │   │   ├── stores/                 # Pinia 状态管理
 │   │   ├── api/                    # Axios client + 模块 API
-│   │   ├── views/                  # 页面组件 (18 个)
+│   │   ├── views/                  # 页面组件 (22 个)
 │   │   ├── layouts/                # MainLayout (侧边栏 + 顶栏)
-│   │   └── __tests__/              # vitest 测试 (10 用例)
+│   │   └── __tests__/              # vitest 测试 (21 用例)
 │   └── package.json
+├── deploy/
+│   ├── docker-compose.hardened.yml  # 加固版 Compose 部署
+│   └── nginx.conf                   # 改进版 nginx 配置
+├── k8s/                             # Kubernetes 部署清单
+├── scripts/
+│   └── backup.sh                    # SQLite 在线备份脚本
 ├── tests/
 │   └── smoke.sh                    # curl 冒烟测试
 ├── deploy.sh                        # 一键构建部署脚本
@@ -117,7 +136,12 @@ openassassin/
 | `SSH_TERMINAL_IDLE_TIMEOUT` | `3600` | SSH 终端空闲超时 (秒) |
 | `AUDIT_ENABLED` | `true` | 是否启用审计日志 |
 | `AUDIT_LOG_RETENTION_DAYS` | `180` | 审计日志保留天数 |
-| `AUDIT_IP_SOURCE` | `direct` | 审计 IP 来源: direct / forwarded / header 名 |
+| `AUDIT_IP_SOURCE` | `forwarded` | 审计 IP 来源: direct / forwarded / header 名 |
+| `AUDIT_IP_GEOLOCATION` | `false` | 是否查询 IP 归属地 (开启会外发 IP 到 ip-api.com) |
+| `CORS_ORIGINS` | `http://localhost:5173,http://localhost:8080` | 允许的跨域来源 (逗号分隔) |
+| `LOGIN_RATE_LIMIT_ENABLED` | `true` | 是否启用登录限流 |
+| `LOGIN_MAX_ATTEMPTS` | `5` | 每用户每窗口最大登录失败次数 |
+| `LOGIN_WINDOW_SECONDS` | `300` | 限流时间窗口 (秒) |
 
 ### Secret 变量 (支持 Docker Swarm / K8s)
 
@@ -152,14 +176,49 @@ npm run test      # 运行测试
 ### 测试
 
 ```bash
-# 后端测试 (124 用例)
+# 后端测试 (187 用例)
 cd backend && pytest tests/ -v
 
-# 前端测试 (10 用例)
+# 前端测试 (21 用例)
 cd frontend && npm run test
 
 # 冒烟测试 (Docker Compose 启动后)
 bash tests/smoke.sh
+```
+
+## 部署选项
+
+### 标准部署
+
+```bash
+bash deploy.sh      # 自动构建 + 启动
+```
+
+### 加固部署 (生产推荐)
+
+加固版部署增加: 非 root 运行、read_only 容器、docker-socket-proxy 代理、健康检查、日志轮转。
+
+```bash
+cp .env.example .env
+# 编辑 .env 填入强随机密钥
+docker compose -f deploy/docker-compose.hardened.yml up -d
+```
+
+### Kubernetes
+
+```bash
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/secret.yaml -f k8s/configmap.yaml -f k8s/pvc.yaml
+kubectl apply -f k8s/backend-deployment.yaml -f k8s/backend-service.yaml
+kubectl apply -f k8s/frontend-deployment.yaml -f k8s/frontend-service.yaml
+kubectl apply -f k8s/ingress.yaml
+```
+
+### 数据库备份
+
+```bash
+# 在线热备份 (建议每日 cron)
+bash scripts/backup.sh [保留天数, 默认30]
 ```
 
 ## CI 门禁
@@ -208,6 +267,7 @@ PR → backend-tests  ──┐
 |------|------|------|------|
 | GET/POST | `/api/v1/credentials` | 密钥列表 / 创建 | 是 |
 | GET/DELETE | `/api/v1/credentials/{id}` | 密钥详情(解密) / 删除 | 是 |
+| POST | `/api/v1/credentials/parse-kubeconfig` | 解析 Kubeconfig 文件 | 是 |
 
 ### 主机运维
 
