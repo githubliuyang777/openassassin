@@ -1,4 +1,8 @@
+import base64
+from datetime import datetime, timedelta, timezone
+
 import pytest
+import yaml
 
 CRED_PAYLOAD = {
     "name": "API Token",
@@ -8,12 +12,74 @@ CRED_PAYLOAD = {
 }
 
 
+def _make_kubeconfig(expiry_days: int = 30) -> str:
+    """Build a minimal kubeconfig carrying a client cert with a known expiry."""
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    now = datetime.now(timezone.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test")]))
+        .issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test")]))
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1))
+        .not_valid_after(now + timedelta(days=expiry_days))
+        .sign(key, hashes.SHA256())
+    )
+    der = cert.public_bytes(serialization.Encoding.DER)
+    return (
+        "apiVersion: v1\nkind: Config\nusers:\n- name: test\n  user:\n"
+        f"    client-certificate-data: {base64.b64encode(der).decode()}\n"
+    )
+
+
 class TestCredentialsUnauthenticated:
     def test_list_unauthenticated(self, client):
         assert client.get("/api/v1/credentials").status_code == 403
 
     def test_create_unauthenticated(self, client):
         assert client.post("/api/v1/credentials", json=CRED_PAYLOAD).status_code == 403
+
+    def test_parse_kubeconfig_requires_auth(self, client):
+        """parse-kubeconfig must not be callable without a valid JWT."""
+        resp = client.post("/api/v1/credentials/parse-kubeconfig", json={"value": "x"})
+        assert resp.status_code in (401, 403)
+
+    def test_parse_kubeconfig_requires_content(self, client, auth_headers):
+        resp = client.post("/api/v1/credentials/parse-kubeconfig", json={"value": ""}, headers=auth_headers)
+        assert resp.status_code == 400
+
+
+class TestParseKubeconfig:
+    def test_parse_kubeconfig_ok(self, client, auth_headers):
+        resp = client.post("/api/v1/credentials/parse-kubeconfig",
+                           json={"value": _make_kubeconfig(30)}, headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["days_left"] > 0
+        assert "T" in data["expires_at"]
+
+    def test_parse_kubeconfig_days_left_matches_cert(self, client, auth_headers):
+        """days_left 应与证书剩余有效期一致（允许 1 天舍入误差）。"""
+        resp = client.post("/api/v1/credentials/parse-kubeconfig",
+                           json={"value": _make_kubeconfig(90)}, headers=auth_headers)
+        assert resp.status_code == 200
+        assert 85 <= resp.json()["days_left"] <= 90
+
+    def test_parse_kubeconfig_no_cert(self, client, auth_headers):
+        resp = client.post("/api/v1/credentials/parse-kubeconfig",
+                           json={"value": "apiVersion: v1\nkind: Config\nusers: []"}, headers=auth_headers)
+        assert resp.status_code == 400
+
+    def test_parse_kubeconfig_oversized(self, client, auth_headers):
+        resp = client.post("/api/v1/credentials/parse-kubeconfig",
+                           json={"value": "x" * (1024 * 1024 + 1)}, headers=auth_headers)
+        assert resp.status_code == 400
 
 
 class TestCredentialsCRUD:

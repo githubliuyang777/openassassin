@@ -11,7 +11,7 @@ from app.middleware.auth_middleware import (
     get_current_user_from_mfa_token,
     get_current_user_from_setup_token,
 )
-from app.middleware.audit_middleware import _get_client_ip
+from app.middleware.audit_middleware import _get_client_ip, _raw_client_ip
 from app.schemas.auth import (
     LoginRequest, TokenResponse, UserInfo,
     ChangePasswordRequest, ForgotPasswordRequest, ResetPasswordRequest,
@@ -24,6 +24,7 @@ from app.schemas.auth import (
 )
 from app.services import captcha_service
 from app.services import auth_service
+from app.services import rate_limit
 from app.services.email_service import send_reset_code, send_email, EmailNotConfiguredError
 from app.services import totp_service
 from app.services.credential_service import encrypt, decrypt
@@ -31,11 +32,33 @@ from app.services.credential_service import encrypt, decrypt
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _rate_limited(scope: str, key: str, limit: int, window: int) -> None:
+    """Raise 429 if the key has exceeded the failed-attempt limit."""
+    limited, retry_after = rate_limit.is_limited(scope, key, limit, window)
+    if limited:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"尝试过于频繁，请 {retry_after} 秒后重试",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
 @router.post("/login", response_model=TokenResponse | MfaRequiredResponse)
 def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    # Use the TCP peer IP (not X-Forwarded-For) so attackers cannot bypass
+    # the limiter by spoofing the header.
+    ip = _raw_client_ip(request)
+    user_key = f"{ip}:{body.username}"
+    _rate_limited("login_user", user_key, settings.login_failed_limit, settings.login_window_seconds)
+    _rate_limited("login_ip", ip, settings.login_ip_limit, settings.login_window_seconds)
+
     user = auth_service.authenticate(db, body.username, body.password)
     if not user:
+        rate_limit.record_failure("login_user", user_key)
+        rate_limit.record_failure("login_ip", ip)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
+
+    rate_limit.record_success("login_user", user_key)
 
     try:
         from app.services.audit_service import create_log
@@ -48,10 +71,10 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
         pass
 
     if user.totp_enabled:
-        mfa_token = auth_service.create_mfa_token(user.id, user.username)
+        mfa_token = auth_service.create_mfa_token(user.id, user.username, ver=user.token_version or 0)
         return MfaRequiredResponse(mfa_token=mfa_token)
 
-    token = auth_service.create_token(user.id, user.username, user.role)
+    token = auth_service.create_token(user.id, user.username, user.role, ver=user.token_version or 0)
     return TokenResponse(access_token=token)
 
 
@@ -135,10 +158,16 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/reset-password")
-def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+def reset_password(body: ResetPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    ip = _raw_client_ip(request)
+    key = f"{ip}:{body.email}"
+    _rate_limited("reset_code", key, settings.reset_code_limit, settings.reset_code_window_seconds)
+
     ok = auth_service.reset_password_with_code(db, body.email, body.code, body.new_password)
     if not ok:
+        rate_limit.record_failure("reset_code", key)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="验证码错误或已过期")
+    rate_limit.record_success("reset_code", key)
     return {"message": "密码重置成功"}
 
 
@@ -193,7 +222,7 @@ def mfa_verify(
     if totp_service.verify_totp(secret, body.totp_code):
         totp_service.reset_failed_attempts(user)
         db.commit()
-        token = auth_service.create_token(user.id, user.username, user.role)
+        token = auth_service.create_token(user.id, user.username, user.role, ver=user.token_version or 0)
         _audit(db, user.id, user.username, "POST", "MFA验证成功", request)
         return TokenResponse(access_token=token)
 
@@ -214,13 +243,17 @@ def mfa_recovery(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
 
+    _rate_limited("mfa_recovery", str(user.id), settings.mfa_recovery_limit, settings.mfa_recovery_window_seconds)
+
     if totp_service.verify_backup_code(user, body.recovery_code):
         totp_service.reset_failed_attempts(user)
         db.commit()
-        token = auth_service.create_token(user.id, user.username, user.role)
+        rate_limit.record_success("mfa_recovery", str(user.id))
+        token = auth_service.create_token(user.id, user.username, user.role, ver=user.token_version or 0)
         _audit(db, user.id, user.username, "POST", "备用码验证成功", request)
         return TokenResponse(access_token=token)
 
+    rate_limit.record_failure("mfa_recovery", str(user.id))
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="备用码无效或已被使用")
 
 
@@ -298,7 +331,8 @@ def mfa_setup_verify_email(
     secret = totp_service.generate_secret()
     uri = totp_service.get_provisioning_uri(secret, db_user.username, settings.totp_issuer)
     enc_secret = encrypt(secret)
-    setup_token = auth_service.create_setup_token(db_user.id, db_user.username, enc_secret)
+    setup_token = auth_service.create_setup_token(db_user.id, db_user.username, enc_secret,
+                                                  ver=db_user.token_version or 0)
 
     db_user.totp_email_code = None
     db_user.totp_email_code_expires_at = None

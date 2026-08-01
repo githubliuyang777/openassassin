@@ -10,6 +10,8 @@ class User(Base):
     username = Column(String(64), unique=True, nullable=False, index=True)
     password_hash = Column(String(256), nullable=False)
     role = Column(String(32), default="admin")
+    # Bumped on password change/reset so previously issued JWTs are revoked.
+    token_version = Column(Integer, default=0)
     email = Column(String(128), default="")
     reset_code = Column(String(8), nullable=True)
     reset_code_expires_at = Column(DateTime, nullable=True)

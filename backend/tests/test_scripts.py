@@ -1,4 +1,9 @@
+import os
+from unittest.mock import patch
+
 import pytest
+
+from app.config import settings
 
 SCRIPT_PAYLOAD = {
     "name": "test-script",
@@ -102,3 +107,78 @@ class TestScriptsCRUD:
         data = resp.json()
         assert data["total"] == 5
         assert len(data["items"]) == 3
+
+
+class TestScriptExecute:
+    """POST /scripts/{id}/execute: 通过 mock sandbox 覆盖超时/成功/凭据注入场景。"""
+
+    def _create(self, client, auth_headers):
+        resp = client.post("/api/v1/scripts", json=SCRIPT_PAYLOAD, headers=auth_headers)
+        assert resp.status_code == 201
+        return resp.json()["id"]
+
+    def test_execute_nonexistent(self, client, auth_headers):
+        resp = client.post("/api/v1/scripts/99999/execute", json={"credential_ids": []}, headers=auth_headers)
+        assert resp.status_code == 404
+
+    def test_execute_timeout_recorded(self, client, auth_headers):
+        """sandbox 返回 timeout → 执行记录落库为 timeout、exit_code=-1、日志文件可读。"""
+        sid = self._create(client, auth_headers)
+        with patch("app.api.scripts.execute_script") as mock_exec:
+            mock_exec.return_value = {"status": "timeout", "exit_code": -1, "log": "run too long\n"}
+            resp = client.post(f"/api/v1/scripts/{sid}/execute", json={"credential_ids": []}, headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "timeout"
+        assert data["exit_code"] == -1
+        assert data["log"] == "run too long\n"
+
+        exid = data["id"]
+        try:
+            rec = client.get(f"/api/v1/executions/{exid}", headers=auth_headers).json()
+            assert rec["status"] == "timeout"
+            assert rec["exit_code"] == -1
+            log = client.get(f"/api/v1/executions/{exid}/log", headers=auth_headers).json()
+            assert log["log"] == "run too long\n"
+        finally:
+            os.remove(os.path.join(settings.log_dir, f"{exid}.log"))  # 清理临时日志
+
+    def test_execute_success_recorded(self, client, auth_headers):
+        sid = self._create(client, auth_headers)
+        with patch("app.api.scripts.execute_script") as mock_exec:
+            mock_exec.return_value = {"status": "success", "exit_code": 0, "log": "ok"}
+            resp = client.post(f"/api/v1/scripts/{sid}/execute", json={}, headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "success"
+        assert data["exit_code"] == 0
+        exid = data["id"]
+        rec = client.get(f"/api/v1/executions/{exid}", headers=auth_headers).json()
+        assert rec["status"] == "success"
+        os.remove(os.path.join(settings.log_dir, f"{exid}.log"))
+
+    def test_execute_failure_recorded(self, client, auth_headers):
+        sid = self._create(client, auth_headers)
+        with patch("app.api.scripts.execute_script") as mock_exec:
+            mock_exec.return_value = {"status": "failed", "exit_code": 2, "log": "boom"}
+            resp = client.post(f"/api/v1/scripts/{sid}/execute", json={"credential_ids": []}, headers=auth_headers)
+        assert resp.json()["status"] == "failed"
+        assert resp.json()["exit_code"] == 2
+        os.remove(os.path.join(settings.log_dir, f"{resp.json()['id']}.log"))
+
+    def test_execute_injects_decrypted_credentials(self, client, auth_headers):
+        """传入 credential_ids → sandbox 收到解密后的明文值（内存中解密，响应不回显）。"""
+        c = client.post("/api/v1/credentials", json={
+            "name": "API Token", "key": "API_TOKEN", "value": "secret-abc-123", "description": "t",
+        }, headers=auth_headers)
+        cid = c.json()["id"]
+        sid = self._create(client, auth_headers)
+        with patch("app.api.scripts.execute_script") as mock_exec:
+            mock_exec.return_value = {"status": "success", "exit_code": 0, "log": ""}
+            resp = client.post(f"/api/v1/scripts/{sid}/execute", json={"credential_ids": [cid]}, headers=auth_headers)
+        assert resp.status_code == 200
+        kwargs = mock_exec.call_args.kwargs
+        assert kwargs["credential_values"] == {"API_TOKEN": "secret-abc-123"}
+        # 响应与日志中不得出现明文值
+        assert "secret-abc-123" not in resp.json()["log"]
+        os.remove(os.path.join(settings.log_dir, f"{resp.json()['id']}.log"))

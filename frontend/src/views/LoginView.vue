@@ -61,7 +61,9 @@ const router = useRouter()
 const auth = useAuthStore()
 const message = useMessage()
 
-const form = ref({ username: 'admin', password: 'admin' })
+// Do not prefill default credentials (admin/admin) — this is a security
+// issue: it advertises the default password and enables one-click login.
+const form = ref({ username: '', password: '' })
 const loading = ref(false)
 const formRef = ref()
 const step = ref<'password' | 'mfa'>('password')

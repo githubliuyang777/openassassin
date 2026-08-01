@@ -44,11 +44,16 @@ def _parse_kubeconfig_expiry(content: str) -> datetime | None:
 
 
 @router.post("/parse-kubeconfig")
-def parse_kubeconfig(body: dict):
+def parse_kubeconfig(
+    body: dict,
+    _user: dict = Depends(get_current_user),
+):
     """Parse a kubeconfig value and extract the client certificate expiry date."""
     content = body.get("value", "")
     if not content:
         raise HTTPException(status_code=400, detail="请提供 kubeconfig 内容")
+    if len(content) > 1024 * 1024:  # guard against oversized payloads
+        raise HTTPException(status_code=400, detail="kubeconfig 内容过大（上限 1MB）")
 
     expires_at = _parse_kubeconfig_expiry(content)
     if expires_at is None:

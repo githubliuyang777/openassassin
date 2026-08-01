@@ -19,11 +19,12 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
-def create_token(user_id: int, username: str, role: str) -> str:
+def create_token(user_id: int, username: str, role: str, ver: int = 0) -> str:
     payload = {
         "sub": str(user_id),
         "username": username,
         "role": role,
+        "ver": ver,  # token version; bumped on password change to revoke old tokens
         "exp": datetime.now(timezone.utc) + timedelta(hours=settings.jwt_expire_hours),
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
@@ -33,22 +34,24 @@ def decode_token(token: str) -> dict:
     return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
 
 
-def create_mfa_token(user_id: int, username: str) -> str:
+def create_mfa_token(user_id: int, username: str, ver: int = 0) -> str:
     payload = {
         "sub": str(user_id),
         "username": username,
         "scope": "mfa_required",
+        "ver": ver,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=settings.totp_mfa_token_minutes),
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def create_setup_token(user_id: int, username: str, enc_secret: str) -> str:
+def create_setup_token(user_id: int, username: str, enc_secret: str, ver: int = 0) -> str:
     payload = {
         "sub": str(user_id),
         "username": username,
         "scope": "totp_setup",
         "enc_secret": enc_secret,
+        "ver": ver,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=settings.totp_setup_token_minutes),
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
@@ -93,6 +96,7 @@ def change_password(db: Session, user_id: int, old_password: str, new_password: 
     if not user or not verify_password(old_password, user.password_hash):
         return False
     user.password_hash = hash_password(new_password)
+    user.token_version = (user.token_version or 0) + 1  # revoke all outstanding JWTs
     db.commit()
     return True
 
@@ -119,5 +123,6 @@ def reset_password_with_code(db: Session, email: str, code: str, new_password: s
     user.password_hash = hash_password(new_password)
     user.reset_code = None
     user.reset_code_expires_at = None
+    user.token_version = (user.token_version or 0) + 1  # revoke all outstanding JWTs
     db.commit()
     return True
