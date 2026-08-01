@@ -85,6 +85,15 @@
             placeholder="默认（管理员邮箱）"
             clearable
           />
+          <div v-if="selectedGroupChannels.length" style="margin-top: 6px; display: flex; gap: 6px">
+            <n-tag v-for="ch in selectedGroupChannels" :key="ch.value" :type="ch.type" size="small">
+              <template #icon><n-icon :size="14"><MailOutline v-if="ch.value === 'email'" /><NotificationsOutline v-else /></n-icon></template>
+              {{ ch.label }}
+            </n-tag>
+          </div>
+          <n-text v-else-if="form.notification_group_id" depth="3" style="font-size: 12px; margin-top: 4px; display: block">
+            该通知组暂无成员
+          </n-text>
         </n-form-item>
         <n-form-item path="alert_enabled" label="告警通知">
           <n-switch v-model:value="form.alert_enabled" />
@@ -154,8 +163,8 @@
 
 <script setup lang="ts">
 import { h, ref, computed, onMounted } from 'vue'
-import { useMessage, useDialog, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NSwitch, NH3, NGrid, NGridItem, NDrawer, NDrawerContent, NTable, NPagination, NDropdown, NRadioGroup, NRadioButton } from 'naive-ui'
-import { AddOutline, PulseOutline, DownloadOutline, GridOutline } from '@vicons/ionicons5'
+import { useMessage, useDialog, NTag, NButton, NIcon, NText, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NSwitch, NH3, NGrid, NGridItem, NDrawer, NDrawerContent, NTable, NPagination, NDropdown, NRadioGroup, NRadioButton } from 'naive-ui'
+import { AddOutline, PulseOutline, DownloadOutline, GridOutline, MailOutline, NotificationsOutline } from '@vicons/ionicons5'
 import {
   fetchSiteMonitors, createSiteMonitor, updateSiteMonitor, deleteSiteMonitor, checkNow, fetchHistory, exportSla, fetchHeatmap, fetchMonitorGroups,
 } from '@/api/site-monitors'
@@ -185,6 +194,22 @@ const notificationGroups = ref<NotificationGroup[]>([])
 const notifGroupOptions = computed(() =>
   notificationGroups.value.map((g) => ({ label: g.name, value: g.id }))
 )
+
+const channelLabelMap: Record<string, { label: string; type: 'info' | 'success' }> = {
+  email:    { label: '邮件通知', type: 'info' },
+  dingtalk: { label: '钉钉通知', type: 'success' },
+}
+
+const selectedGroupChannels = computed(() => {
+  if (!form.value.notification_group_id) return []
+  const group = notificationGroups.value.find((g) => g.id === form.value.notification_group_id)
+  if (!group || !group.recipients) return []
+  const types = [...new Set(group.recipients.map((r) => r.channel_type))]
+  return types.map((t) => {
+    const info = channelLabelMap[t] || { label: t, type: 'default' as const }
+    return { ...info, value: t }
+  })
+})
 
 const rules = {
   name: [{ required: true, message: '请输入名称' }],
