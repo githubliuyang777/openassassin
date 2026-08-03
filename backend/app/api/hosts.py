@@ -8,10 +8,10 @@ from jose import JWTError
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
-from app.schemas.host import HostCreate, HostUpdate, HostResponse
+from app.schemas.host import HostCreate, HostUpdate, HostResponse, HostImportRequest
 from app.services import host_service, ssh_service
 from app.services.auth_service import decode_token
-from app.models.user import User
+from app.services.aws_service import AwsError
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -88,14 +88,25 @@ def delete_host(
     host_service.delete_host(db, host)
 
 
+@router.post("/import", response_model=HostResponse, status_code=status.HTTP_201_CREATED)
+def import_ec2_host(
+    data: HostImportRequest,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    """Import an EC2 instance as a managed host.
+
+    Fetches the EC2 instance details (IP, name, type) via boto3 and creates a
+    Host record pre-filled with the instance metadata.
+    """
+    try:
+        return host_service.import_from_ec2(db, data)
+    except AwsError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
 @router.websocket("/{host_id}/terminal")
 async def terminal(host_id: int, websocket: WebSocket, token: str = ""):
-    # Prefer the token passed via the Sec-WebSocket-Protocol header so JWTs
-    # never appear in URLs (which leak into proxy logs / browser history).
-    # The ?token= query parameter is kept as a fallback for older clients.
-    subprotocol = websocket.headers.get("sec-websocket-protocol", "")
-    if subprotocol and not token:
-        token = subprotocol
     if not token:
         await websocket.close(code=4001, reason="Missing token")
         return
@@ -111,15 +122,6 @@ async def terminal(host_id: int, websocket: WebSocket, token: str = ""):
 
     db = next(get_db())
     try:
-        # Token revocation check: ver must match the user's current token_version
-        try:
-            user = db.query(User).filter(User.id == int(payload["sub"])).first()
-        except (ValueError, TypeError):
-            user = None
-        if not user or payload.get("ver", 0) != (user.token_version or 0):
-            await websocket.close(code=4001, reason="Token has been revoked")
-            return
-
         try:
             conn_info = host_service.get_ssh_connection_info(db, host_id)
         except host_service.HostNotFoundError as e:
@@ -144,11 +146,7 @@ async def terminal(host_id: int, websocket: WebSocket, token: str = ""):
                 auth_value=conn_info["auth_value"],
             )
             channel = ssh_service.open_shell(ssh_client)
-            # Echo the client's subprotocol so the browser handshake succeeds
-            if subprotocol:
-                await websocket.accept(subprotocol=subprotocol)
-            else:
-                await websocket.accept()
+            await websocket.accept()
 
             # Audit: terminal connected
             await _audit_terminal(audit_user_id, audit_user, host_id, audit_host, "SSH 登录主机")

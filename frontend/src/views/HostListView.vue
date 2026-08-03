@@ -10,7 +10,17 @@
 
     <n-data-table :columns="columns" :data="hosts" :loading="loading" :row-key="(r: any) => r.id" />
 
+    <!-- Create Modal -->
     <n-modal v-model:show="showCreate" preset="card" title="新建主机" style="width: 520px">
+      <n-space style="margin-bottom: 12px">
+        <n-button dashed @click="openEc2Import">
+          <template #icon><n-icon><CloudOutline /></n-icon></template>
+          从 EC2 导入
+        </n-button>
+        <n-text v-if="createForm.aws_instance_id" depth="3" style="font-size:12px">
+          已导入: {{ createForm.aws_instance_id }}
+        </n-text>
+      </n-space>
       <n-form ref="createFormRef" :model="createForm" :rules="formRules" label-placement="top">
         <n-form-item path="name" label="名称">
           <n-input v-model:value="createForm.name" placeholder="如: 生产服务器" />
@@ -33,8 +43,8 @@
         <n-form-item path="credential_id" label="认证凭证（选填）">
           <n-select
             v-model:value="createForm.credential_id"
-            :options="credentialOptions"
-            placeholder="选择密钥或 SSH 凭证"
+            :options="sshCredentialOptions"
+            placeholder="选择 SSH 密钥或密码凭证"
             clearable
             filterable
           />
@@ -51,6 +61,7 @@
       </template>
     </n-modal>
 
+    <!-- Edit Modal -->
     <n-modal v-model:show="showEdit" preset="card" title="编辑主机" style="width: 520px">
       <n-form ref="editFormRef" :model="editForm" :rules="formRules" label-placement="top">
         <n-form-item path="name" label="名称">
@@ -74,8 +85,8 @@
         <n-form-item path="credential_id" label="认证凭证（选填）">
           <n-select
             v-model:value="editForm.credential_id"
-            :options="credentialOptions"
-            placeholder="选择密钥或 SSH 凭证"
+            :options="sshCredentialOptions"
+            placeholder="选择 SSH 密钥或密码凭证"
             clearable
             filterable
           />
@@ -91,16 +102,46 @@
         </n-space>
       </template>
     </n-modal>
+
+    <!-- EC2 Import Modal -->
+    <n-modal v-model:show="showEc2Import" preset="card" title="从 EC2 导入主机" style="width: 680px">
+      <n-space vertical :size="12">
+        <n-grid :cols="3" :x-gap="12">
+          <n-grid-item>
+            <n-select v-model:value="ec2AwsCredentialId" :options="awsCredentialOptions" placeholder="AWS 凭证" />
+          </n-grid-item>
+          <n-grid-item>
+            <n-select v-model:value="ec2Region" :options="ec2RegionOptions" placeholder="区域" />
+          </n-grid-item>
+          <n-grid-item>
+            <n-select v-model:value="osType" :options="osTypeOptions" placeholder="操作系统" />
+          </n-grid-item>
+        </n-grid>
+        <n-button type="primary" :loading="ec2Loading" block @click="loadEc2Instances">
+          查询实例
+        </n-button>
+        <n-data-table
+          :columns="ec2Columns"
+          :data="ec2Instances"
+          :loading="ec2Loading"
+          :row-key="(r: any) => r.instance_id"
+          size="small"
+          :max-height="300"
+          virtual-scroll
+        />
+      </n-space>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { h, ref, onMounted } from 'vue'
+import { h, ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useMessage, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NH3, NGrid, NGridItem, useDialog } from 'naive-ui'
-import { AddOutline, PlayOutline } from '@vicons/ionicons5'
-import { fetchHosts, createHost, updateHost, deleteHost } from '@/api/hosts'
+import { useMessage, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NH3, NGrid, NGridItem, NText, useDialog } from 'naive-ui'
+import { AddOutline, PlayOutline, CloudOutline } from '@vicons/ionicons5'
+import { fetchHosts, createHost, updateHost, deleteHost, importFromEc2 } from '@/api/hosts'
 import { fetchCredentials, getTypeLabel } from '@/api/credentials'
+import { fetchInstances, fetchRegions, type Ec2Instance } from '@/api/aws'
 import type { Host, HostCreate } from '@/api/hosts'
 import type { Credential } from '@/api/credentials'
 import type { DataTableColumn } from 'naive-ui'
@@ -116,10 +157,19 @@ const saving = ref(false)
 
 const showCreate = ref(false)
 const showEdit = ref(false)
+const showEc2Import = ref(false)
 const editingId = ref<number | null>(null)
 
-const createForm = ref<HostCreate>({ name: '', hostname: '', port: 22, username: 'root', credential_id: null, description: '' })
-const editForm = ref<HostCreate>({ name: '', hostname: '', port: 22, username: 'root', credential_id: null, description: '' })
+const createForm = ref<HostCreate>({
+  name: '', hostname: '', port: 22, username: 'root',
+  credential_id: null, aws_instance_id: null, aws_region: null, aws_credential_id: null,
+  description: '',
+})
+const editForm = ref<HostCreate>({
+  name: '', hostname: '', port: 22, username: 'root',
+  credential_id: null, aws_instance_id: null, aws_region: null, aws_credential_id: null,
+  description: '',
+})
 const createFormRef = ref()
 const editFormRef = ref()
 
@@ -129,19 +179,64 @@ const formRules = {
   username: [{ required: true, message: '请输入用户名' }],
 }
 
-const credentialOptions = ref<{ label: string; value: number }[]>([])
+// EC2 import state
+const ec2Instances = ref<Ec2Instance[]>([])
+const ec2AwsCredentialId = ref<number | null>(null)
+const ec2Region = ref<string | null>(null)
+const ec2Loading = ref(false)
+const osType = ref('amazon-linux')
+const osTypeOptions = [
+  { label: 'Amazon Linux → ec2-user', value: 'amazon-linux' },
+  { label: 'Ubuntu → ubuntu', value: 'ubuntu' },
+  { label: 'Debian → admin', value: 'debian' },
+  { label: 'CentOS / RHEL → root', value: 'centos-rhel' },
+  { label: 'SUSE → ec2-user', value: 'suse' },
+]
 
-async function loadCredentials() {
-  try {
-    const resp = await fetchCredentials()
-    credentials.value = resp.data
-    credentialOptions.value = resp.data.map((c: Credential) => ({
-      label: `${c.name} (${getTypeLabel(c.type)})`,
-      value: c.id,
-    }))
-  } catch (_e) { /* non-critical */ }
+const OS_USER_MAP: Record<string, string> = {
+  'amazon-linux': 'ec2-user',
+  'ubuntu': 'ubuntu',
+  'debian': 'admin',
+  'centos-rhel': 'root',
+  'suse': 'ec2-user',
 }
 
+// Credential options filtered for SSH types only
+const sshCredentialOptions = computed(() =>
+  credentials.value
+    .filter(c => ['ssh_key', 'ssh_password', 'generic'].includes(c.type))
+    .map(c => ({ label: `${c.name} (${getTypeLabel(c.type)})`, value: c.id }))
+)
+
+// AWS credential options (type=aws only)
+const awsCredentialOptions = computed(() =>
+  credentials.value
+    .filter(c => c.type === 'aws')
+    .map(c => ({ label: c.name, value: c.id }))
+)
+
+// Region options
+const ec2RegionOptions = ref<{ label: string; value: string }[]>([])
+
+// EC2 table columns
+const ec2Columns: DataTableColumn<Ec2Instance>[] = [
+  { title: '名称', key: 'name', width: 140, ellipsis: { tooltip: true } },
+  { title: '实例 ID', key: 'instance_id', width: 140 },
+  { title: '类型', key: 'instance_type', width: 90 },
+  {
+    title: '状态', key: 'state', width: 70,
+    render: (r) => h(NTag, { type: r.state === 'running' ? 'success' : 'error', size: 'small' }, () => r.state),
+  },
+  { title: 'IP', key: 'public_ip', width: 120, render: (r) => r.public_ip || r.private_ip },
+  {
+    title: '', key: 'pick', width: 60,
+    render: (r) => r.state === 'running'
+      ? h(NButton, { size: 'tiny', type: 'primary', onClick: () => fillFromEc2(r) }, () => '选择')
+      : h(NText, { depth: 3 }, () => '—'),
+  },
+]
+
+// Table columns
 function getCredentialLabel(credId: number | null) {
   if (credId === null) return '-'
   const cred = credentials.value.find(c => c.id === credId)
@@ -176,30 +271,112 @@ function formatTime(val: string | null) {
   })
 }
 
+// -- Lifecycle & loaders ---------------------------------------------------
+
+onMounted(() => {
+  loadHosts()
+  loadCredentials()
+  loadAwsRegions()
+})
+
 async function loadHosts() {
   loading.value = true
   try {
     const resp = await fetchHosts()
     hosts.value = resp.data
   } catch (e: any) {
-    message.error(e.response?.data?.detail || '加载失败')
+    message.error(e.message || '加载失败')
   } finally {
     loading.value = false
   }
 }
+
+async function loadCredentials() {
+  try {
+    const resp = await fetchCredentials()
+    credentials.value = resp.data
+  } catch (_e) { /* non-critical */ }
+}
+
+async function loadAwsRegions() {
+  try {
+    const resp = await fetchRegions()
+    ec2RegionOptions.value = (resp.data.regions || []).map((r: string) => ({ label: r, value: r }))
+    if (ec2RegionOptions.value.length > 0 && !ec2Region.value) {
+      ec2Region.value = ec2RegionOptions.value[0].value
+    }
+  } catch (_e) { /* ignore */ }
+}
+
+// -- EC2 import ------------------------------------------------------------
+
+function openEc2Import() {
+  if (awsCredentialOptions.value.length > 0 && !ec2AwsCredentialId.value) {
+    ec2AwsCredentialId.value = awsCredentialOptions.value[0].value
+  }
+  showEc2Import.value = true
+}
+
+async function loadEc2Instances() {
+  if (!ec2AwsCredentialId.value || !ec2Region.value) {
+    message.warning('请选择 AWS 凭证和区域')
+    return
+  }
+  ec2Loading.value = true
+  try {
+    const resp = await fetchInstances(ec2AwsCredentialId.value, ec2Region.value)
+    ec2Instances.value = resp.data || []
+  } catch (e: any) {
+    message.error(e.message || '加载实例失败')
+  } finally {
+    ec2Loading.value = false
+  }
+}
+
+function fillFromEc2(inst: Ec2Instance) {
+  createForm.value.name = inst.name
+  createForm.value.hostname = inst.public_ip || inst.private_ip
+  createForm.value.username = OS_USER_MAP[osType.value] || 'root'
+  createForm.value.port = 22
+  createForm.value.description = `EC2: ${inst.instance_id} (${inst.instance_type}, ${inst.availability_zone})`
+  createForm.value.aws_instance_id = inst.instance_id
+  createForm.value.aws_region = ec2Region.value
+  createForm.value.aws_credential_id = ec2AwsCredentialId.value
+  showEc2Import.value = false
+  message.success(`已填充: ${inst.name}`)
+}
+
+// -- CRUD ------------------------------------------------------------------
 
 async function handleCreate() {
   const valid = await createFormRef.value?.validate().catch(() => false)
   if (!valid) return
   saving.value = true
   try {
-    await createHost(createForm.value)
+    if (createForm.value.aws_instance_id) {
+      await importFromEc2({
+        aws_credential_id: createForm.value.aws_credential_id!,
+        aws_region: createForm.value.aws_region!,
+        aws_instance_id: createForm.value.aws_instance_id,
+        name: createForm.value.name,
+        username: createForm.value.username,
+        port: createForm.value.port,
+        credential_id: createForm.value.credential_id,
+        description: createForm.value.description,
+      })
+    } else {
+      await createHost(createForm.value)
+    }
     message.success('创建成功')
     showCreate.value = false
-    createForm.value = { name: '', hostname: '', port: 22, username: 'root', credential_id: null, description: '' }
+    createForm.value = {
+      name: '', hostname: '', port: 22, username: 'root',
+      credential_id: null, aws_instance_id: null, aws_region: null, aws_credential_id: null,
+      description: '',
+    }
     await loadHosts()
   } catch (e: any) {
-    message.error(e.response?.data?.detail || '创建失败')
+    message.error(e.message || '创建失败')
   } finally {
     saving.value = false
   }
@@ -207,7 +384,12 @@ async function handleCreate() {
 
 function handleEdit(row: Host) {
   editingId.value = row.id
-  editForm.value = { name: row.name, hostname: row.hostname, port: row.port, username: row.username, credential_id: row.credential_id, description: row.description }
+  editForm.value = {
+    name: row.name, hostname: row.hostname, port: row.port,
+    username: row.username, credential_id: row.credential_id,
+    aws_instance_id: row.aws_instance_id, aws_region: row.aws_region,
+    aws_credential_id: row.aws_credential_id, description: row.description,
+  }
   showEdit.value = true
 }
 
@@ -223,7 +405,7 @@ async function handleUpdate() {
     editingId.value = null
     await loadHosts()
   } catch (e: any) {
-    message.error(e.response?.data?.detail || '更新失败')
+    message.error(e.message || '更新失败')
   } finally {
     saving.value = false
   }
@@ -241,7 +423,7 @@ function handleDelete(row: Host) {
         message.success('删除成功')
         await loadHosts()
       } catch (e: any) {
-        message.error(e.response?.data?.detail || '删除失败')
+        message.error(e.message || '删除失败')
       }
     },
   })
@@ -250,9 +432,4 @@ function handleDelete(row: Host) {
 function handleConnect(row: Host) {
   router.push(`/hosts/${row.id}/terminal`)
 }
-
-onMounted(() => {
-  loadHosts()
-  loadCredentials()
-})
 </script>
