@@ -59,6 +59,7 @@ export const CREDENTIAL_TYPES = [
   { label: 'API Token', value: 'api_token' },
   { label: 'SSH 密码', value: 'ssh_password' },
   { label: 'SSH 私钥', value: 'ssh_key' },
+  { label: 'AWS', value: 'aws' },
 ] as const
 
 export function getTypeLabel(type: string): string {

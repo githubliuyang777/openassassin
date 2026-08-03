@@ -27,9 +27,27 @@
             </n-form-item>
           </n-grid-item>
         </n-grid>
-        <n-form-item path="value" label="密钥值">
+        <n-form-item v-if="createForm.type !== 'aws'" path="value" label="密钥值">
           <n-input type="textarea" v-model:value="createForm.value" placeholder="密钥内容" :rows="4" />
         </n-form-item>
+
+        <template v-if="createForm.type === 'aws'">
+          <n-form-item path="aws_access_key_id" label="Access Key ID">
+            <n-input v-model:value="awsForm.access_key_id" placeholder="AKIA..." />
+          </n-form-item>
+          <n-form-item path="aws_secret_access_key" label="Secret Access Key">
+            <n-input v-model:value="awsForm.secret_access_key" type="password" show-password-on="click" placeholder="密钥内容" />
+          </n-form-item>
+          <n-form-item path="aws_region" label="Region">
+            <n-select v-model:value="awsForm.region" :options="awsRegionOptions" placeholder="ap-southeast-1" filterable clearable />
+          </n-form-item>
+          <n-form-item path="aws_session_token" label="Session Token (可选)">
+            <n-input v-model:value="awsForm.session_token" type="textarea" placeholder="临时会话令牌（选填）" :rows="2" />
+          </n-form-item>
+          <n-form-item>
+            <n-button :loading="validatingAws" @click="handleValidateAws">验证凭证</n-button>
+          </n-form-item>
+        </template>
         <n-form-item path="expires_at" label="截止有效期">
           <n-space style="width: 100%">
             <n-date-picker v-model:formatted-value="createForm.expires_at" type="datetime"
@@ -102,6 +120,7 @@ import {
   NInput, NSelect, NDatePicker, NGrid, NGridItem, NSwitch,
   NDescriptions, NDescriptionsItem, NText, NTag, useMessage,
 } from 'naive-ui'
+import axios from 'axios'
 import { AddOutline, AlertCircleOutline } from '@vicons/ionicons5'
 import {
   fetchCredentials, createCredential, revealCredential, deleteCredential, toggleCredentialAlert,
@@ -120,7 +139,22 @@ const showReveal = ref(false)
 const showDelete = ref(false)
 const saving = ref(false)
 const parsingKc = ref(false)
+const validatingAws = ref(false)
 const deleting_loading = ref(false)
+const awsForm = ref({
+  access_key_id: '',
+  secret_access_key: '',
+  region: 'ap-southeast-1',
+  session_token: '',
+})
+const awsRegionOptions = [
+  { label: 'ap-southeast-1 (Singapore)', value: 'ap-southeast-1' },
+  { label: 'us-east-1 (Virginia)', value: 'us-east-1' },
+  { label: 'eu-west-1 (Ireland)', value: 'eu-west-1' },
+  { label: 'ap-northeast-1 (Tokyo)', value: 'ap-northeast-1' },
+  { label: 'ap-southeast-2 (Sydney)', value: 'ap-southeast-2' },
+  { label: 'us-west-2 (Oregon)', value: 'us-west-2' },
+]
 const deleting = ref<Credential | null>(null)
 const revealed = ref<CredentialReveal | null>(null)
 const showValue = ref(false)
@@ -169,6 +203,7 @@ function typeColor(type: string): TagColor {
     kubeconfig: 'warning',
     tls_cert: 'error',
     api_token: 'info',
+    aws: 'info',
     generic: 'default',
   }
   return colors[type] || 'default'
@@ -247,6 +282,28 @@ async function handleParseKubeconfig() {
   }
 }
 
+async function handleValidateAws() {
+  if (!awsForm.value.access_key_id.trim() || !awsForm.value.secret_access_key.trim()) {
+    message.warning('请先填入 Access Key ID 和 Secret Access Key')
+    return
+  }
+  validatingAws.value = true
+  try {
+    const valueJson = JSON.stringify({
+      access_key_id: awsForm.value.access_key_id.trim(),
+      secret_access_key: awsForm.value.secret_access_key.trim(),
+      region: awsForm.value.region || 'ap-southeast-1',
+      session_token: awsForm.value.session_token.trim() || undefined,
+    })
+    const resp = await axios.post('/api/v1/aws/credentials/validate', { value: valueJson })
+    message.success('验证成功: 账号 ' + resp.data.account_id)
+  } catch (e: any) {
+    message.error(e.response?.data?.detail || e.message || '验证失败')
+  } finally {
+    validatingAws.value = false
+  }
+}
+
 async function copyValue() {
   if (!revealed.value) return
   try {
@@ -281,6 +338,15 @@ async function handleCreate() {
   try {
     const payload: any = { ...createForm.value }
     if (!payload.expires_at) payload.expires_at = null
+    if (createForm.value.type === 'aws') {
+      payload.key = awsForm.value.access_key_id.trim().slice(0, 20)
+      payload.value = JSON.stringify({
+        access_key_id: awsForm.value.access_key_id.trim(),
+        secret_access_key: awsForm.value.secret_access_key.trim(),
+        region: awsForm.value.region || 'ap-southeast-1',
+        session_token: awsForm.value.session_token.trim() || undefined,
+      })
+    }
     await createCredential(payload)
     message.success('创建成功')
     showCreate.value = false
