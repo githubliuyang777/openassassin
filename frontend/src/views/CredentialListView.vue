@@ -31,7 +31,6 @@
           <n-input type="textarea" v-model:value="createForm.value" placeholder="密钥内容" :rows="4" />
         </n-form-item>
 
-        <!-- AWS 专用字段 -->
         <template v-if="createForm.type === 'aws'">
           <n-form-item path="aws_access_key_id" label="Access Key ID">
             <n-input v-model:value="awsForm.access_key_id" placeholder="AKIA..." />
@@ -49,7 +48,6 @@
             <n-button :loading="validatingAws" @click="handleValidateAws">验证凭证</n-button>
           </n-form-item>
         </template>
-
         <n-form-item path="expires_at" label="截止有效期">
           <n-space style="width: 100%">
             <n-date-picker v-model:formatted-value="createForm.expires_at" type="datetime"
@@ -88,7 +86,14 @@
         <n-descriptions-item label="类型">{{ getTypeLabel(revealed.type) }}</n-descriptions-item>
         <n-descriptions-item label="环境变量">${{ revealed.key }}</n-descriptions-item>
         <n-descriptions-item label="值">
-          <n-text code>{{ revealed.value }}</n-text>
+          <!-- Mask plaintext by default; reveal only on explicit user action -->
+          <n-space align="center">
+            <n-text code>{{ showValue ? revealed.value : '••••••••••••' }}</n-text>
+            <n-button size="tiny" @click="showValue = !showValue">
+              {{ showValue ? '隐藏' : '显示' }}
+            </n-button>
+            <n-button size="tiny" @click="copyValue">复制</n-button>
+          </n-space>
         </n-descriptions-item>
         <n-descriptions-item v-if="revealed.expires_at" label="有效期">
           {{ formatExpiry(revealed.expires_at) }}
@@ -109,16 +114,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, h, computed, onMounted } from 'vue'
-import axios from 'axios'
+import { ref, h, computed, onMounted, watch } from 'vue'
 import {
   NH3, NSpace, NButton, NIcon, NDataTable, NModal, NForm, NFormItem,
   NInput, NSelect, NDatePicker, NGrid, NGridItem, NSwitch,
   NDescriptions, NDescriptionsItem, NText, NTag, useMessage,
 } from 'naive-ui'
+import axios from 'axios'
 import { AddOutline, AlertCircleOutline } from '@vicons/ionicons5'
 import {
   fetchCredentials, createCredential, revealCredential, deleteCredential, toggleCredentialAlert,
+  parseKubeconfig,
   type Credential, type CredentialReveal, CREDENTIAL_TYPES, getTypeLabel,
 } from '@/api/credentials'
 import { fetchGroups } from '@/api/notification-groups'
@@ -142,16 +148,24 @@ const awsForm = ref({
   session_token: '',
 })
 const awsRegionOptions = [
-  { label: 'ap-southeast-1 (新加坡)', value: 'ap-southeast-1' },
-  { label: 'us-east-1 (弗吉尼亚)', value: 'us-east-1' },
-  { label: 'eu-west-1 (爱尔兰)', value: 'eu-west-1' },
-  { label: 'ap-northeast-1 (东京)', value: 'ap-northeast-1' },
-  { label: 'ap-southeast-2 (悉尼)', value: 'ap-southeast-2' },
-  { label: 'us-west-2 (俄勒冈)', value: 'us-west-2' },
+  { label: 'ap-southeast-1 (Singapore)', value: 'ap-southeast-1' },
+  { label: 'us-east-1 (Virginia)', value: 'us-east-1' },
+  { label: 'eu-west-1 (Ireland)', value: 'eu-west-1' },
+  { label: 'ap-northeast-1 (Tokyo)', value: 'ap-northeast-1' },
+  { label: 'ap-southeast-2 (Sydney)', value: 'ap-southeast-2' },
+  { label: 'us-west-2 (Oregon)', value: 'us-west-2' },
 ]
 const deleting = ref<Credential | null>(null)
 const revealed = ref<CredentialReveal | null>(null)
+const showValue = ref(false)
 const groups = ref<NotificationGroup[]>([])
+
+// Re-mask the value each time the reveal modal opens
+watch(showReveal, (open) => {
+  if (!open) {
+    showValue.value = false
+  }
+})
 
 const typeOptions = CREDENTIAL_TYPES.map(t => ({ label: t.label, value: t.value }))
 const groupOptions = computed(() =>
@@ -258,13 +272,11 @@ async function handleParseKubeconfig() {
   }
   parsingKc.value = true
   try {
-    const resp = await axios.post('/api/v1/credentials/parse-kubeconfig', {
-      value: createForm.value.value,
-    })
+    const resp = await parseKubeconfig(createForm.value.value)
     createForm.value.expires_at = resp.data.expires_at
     message.success(`已解析有效期: ${formatExpiry(resp.data.expires_at)} (剩余 ${resp.data.days_left} 天)`)
   } catch (e: any) {
-    message.error(e.response?.data?.detail || '解析失败')
+    message.error(e.response?.data?.detail || e.message || '解析失败')
   } finally {
     parsingKc.value = false
   }
@@ -284,11 +296,21 @@ async function handleValidateAws() {
       session_token: awsForm.value.session_token.trim() || undefined,
     })
     const resp = await axios.post('/api/v1/aws/credentials/validate', { value: valueJson })
-    message.success(`验证成功: 账号 ${resp.data.account_id}`)
+    message.success('验证成功: 账号 ' + resp.data.account_id)
   } catch (e: any) {
     message.error(e.response?.data?.detail || e.message || '验证失败')
   } finally {
     validatingAws.value = false
+  }
+}
+
+async function copyValue() {
+  if (!revealed.value) return
+  try {
+    await navigator.clipboard.writeText(revealed.value.value)
+    message.success('已复制到剪贴板')
+  } catch {
+    message.error('复制失败，请手动选择复制')
   }
 }
 
@@ -317,7 +339,7 @@ async function handleCreate() {
     const payload: any = { ...createForm.value }
     if (!payload.expires_at) payload.expires_at = null
     if (createForm.value.type === 'aws') {
-      payload.key = awsForm.value.access_key_id.trim().slice(0, 20) // prefix as env hint
+      payload.key = awsForm.value.access_key_id.trim().slice(0, 20)
       payload.value = JSON.stringify({
         access_key_id: awsForm.value.access_key_id.trim(),
         secret_access_key: awsForm.value.secret_access_key.trim(),
