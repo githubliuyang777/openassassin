@@ -32,6 +32,7 @@ def execute_script(
     if config is None:
         config = SCRIPT_CONFIG["shell"]
     image, script_file, command, network_mode = config
+    work_dir = "/workspace"
 
     sandbox_env = {**env_vars, **credential_values}
     secrets_to_mask = list(credential_values.values())
