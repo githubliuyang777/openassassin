@@ -41,6 +41,7 @@ const router = createRouter({
         { path: 'system/network-test', name: 'NetworkTest', component: () => import('@/views/NetworkTestView.vue') },
         { path: 'monitor/site-monitor', name: 'monitor-site-monitor', component: () => import('@/views/SiteMonitorView.vue') },
         { path: 'monitor/domains-whois', name: 'monitor-domains-whois', component: () => import('@/views/DomainWhoisView.vue') },
+        { path: 'aws/ec2', name: 'aws-ec2', component: () => import('@/views/AwsEc2View.vue') },
       ],
     },
   ],

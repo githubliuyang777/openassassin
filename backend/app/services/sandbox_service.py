@@ -22,10 +22,16 @@ def execute_script(
     credential_values: dict[str, str],
 ) -> dict:
     timeout = min(timeout or settings.sandbox_default_timeout, settings.sandbox_max_timeout)
-    image = settings.sandbox_image_python if script_type == "python" else settings.sandbox_image_shell
-    work_dir = "/workspace"
-    script_file = "script.py" if script_type == "python" else "script.sh"
-    command = ["python", script_file] if script_type == "python" else ["sh", script_file]
+
+    SCRIPT_CONFIG = {
+        "shell":  (settings.sandbox_image_shell,  "script.sh", ["sh", "script.sh"],     "none"),
+        "python": (settings.sandbox_image_python, "script.py", ["python", "script.py"],  "none"),
+        "aws":    (settings.sandbox_image_awscli, "script.sh", ["sh", "script.sh"],     "bridge"),
+    }
+    config = SCRIPT_CONFIG.get(script_type)
+    if config is None:
+        config = SCRIPT_CONFIG["shell"]
+    image, script_file, command, network_mode = config
 
     sandbox_env = {**env_vars, **credential_values}
     secrets_to_mask = list(credential_values.values())
@@ -56,7 +62,7 @@ def execute_script(
             volumes={tmp_dir: {"bind": work_dir, "mode": "ro"}},
             mem_limit=settings.sandbox_memory_limit,
             nano_cpus=int(settings.sandbox_cpu_limit * 1e9),
-            network_mode="none",
+            network_mode=network_mode,
             read_only=True,
             cap_drop=["ALL"],                       # no capabilities at all
             pids_limit=128,                         # fork-bomb guard

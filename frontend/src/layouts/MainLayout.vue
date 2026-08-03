@@ -72,6 +72,7 @@ import {
   NotificationsOutline,
   DocumentTextOutline,
   MailOutline,
+  CloudOutline,
 } from '@vicons/ionicons5'
 import AlertBanner from '@/components/AlertBanner.vue'
 import { fetchAlertSummary } from '@/api/alerts'
@@ -166,6 +167,14 @@ const menuOptions = [
     ],
   },
   {
+    label: 'AWS',
+    key: 'Aws',
+    icon: () => h(NIcon, null, () => h(CloudOutline)),
+    children: [
+      { label: 'EC2 实例', key: 'aws-ec2', icon: () => h(NIcon, null, () => h(ServerOutline)) },
+    ],
+  },
+  {
     label: '系统',
     key: 'System',
     icon: () => h(NIcon, null, () => h(SettingsOutline)),
@@ -192,6 +201,7 @@ function activeKeyFromPath() {
   if (route.path.startsWith('/monitor/site-monitor')) return 'monitor-site-monitor'
   if (route.path.startsWith('/monitor/domains-whois')) return 'monitor-domains-whois'
   if (route.path.startsWith('/monitor')) return 'monitor-domains'
+  if (route.path.startsWith('/aws/ec2')) return 'aws-ec2'
   return 'Dashboard'
 }
 
@@ -224,6 +234,10 @@ function handleMenu(key: string) {
   }
   if (key === 'monitor-domains-whois') {
     router.push('/monitor/domains-whois')
+    return
+  }
+  if (key === 'aws-ec2') {
+    router.push('/aws/ec2')
     return
   }
   router.push(`/${key.toLowerCase()}`)

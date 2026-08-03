@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     sandbox_default_timeout: int = 300
     sandbox_max_timeout: int = 3600
     sandbox_tmp_dir: str = "/tmp/openassassin-sandbox"
+    sandbox_image_awscli: str = "amazon/aws-cli:2.x"
+    aws_default_region: str = "ap-southeast-1"
+    aws_regions: str = "ap-southeast-1,us-east-1,eu-west-1"
     log_dir: str = "./data/logs"
     # SMTP for password reset
     smtp_host: str = ""
