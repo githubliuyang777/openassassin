@@ -107,6 +107,14 @@ def _migrate_domain_whois_table():
     ])
 
 
+def _migrate_hosts_aws_fields():
+    _migrate("hosts", [
+        ("aws_instance_id", "VARCHAR(32)"),
+        ("aws_region", "VARCHAR(32)"),
+        ("aws_credential_id", "INTEGER"),
+    ])
+
+
 def _migrate_site_monitors_table():
     _migrate("site_monitors", [
         ("last_alerted_at", "DATETIME"),
@@ -321,6 +329,7 @@ async def lifespan(app: FastAPI):
     _migrate_domains_table()
     _migrate_domain_whois_table()
     _migrate_hosts_table()
+    _migrate_hosts_aws_fields()
     _migrate_audit_logs_table()
     _migrate_subscriptions_table()
     _migrate_site_monitors_table()
