@@ -53,6 +53,20 @@ def list_groups(
     return site_monitor_service.list_groups(db)
 
 
+
+@router.post("/batch-toggle-alert")
+def batch_toggle_alert(
+    body: dict,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    ids = body.get("ids", [])
+    enabled = body.get("enabled", True)
+    count = site_monitor_service.batch_toggle_alert(db, ids, enabled)
+    monitors = site_monitor_service.list_monitors(db)
+    return {"updated": count, "monitors": monitors}
+
+
 @router.post("", response_model=SiteMonitorResponse, status_code=status.HTTP_201_CREATED)
 def create_monitor(
     data: SiteMonitorCreate,
