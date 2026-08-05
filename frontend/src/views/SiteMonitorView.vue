@@ -25,7 +25,15 @@
       />
     </n-space>
 
-    <n-data-table :columns="columns" :data="monitors" :loading="loading" :row-key="(r: SiteMonitor) => r.id" />
+    <div v-if="checkedRowKeys.length" style="background: #f0f9eb; border-radius: 6px; padding: 10px 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px">
+      <n-text strong style="font-size: 13px">已选 {{ checkedRowKeys.length }} 项</n-text>
+      <n-button size="small" quaternary @click="checkedRowKeys = []">取消选择</n-button>
+      <n-divider vertical />
+      <n-button size="small" type="primary" @click="handleBatchToggleAlert(true)">启用告警</n-button>
+      <n-button size="small" type="warning" @click="handleBatchToggleAlert(false)">停止告警</n-button>
+    </div>
+
+    <n-data-table v-model:checked-row-keys="checkedRowKeys" :columns="columns" :data="monitors" :loading="loading" :row-key="(r: SiteMonitor) => r.id" />
 
     <!-- Create/Edit Modal -->
     <n-modal v-model:show="showForm" preset="card" :title="editingId ? '编辑监控' : '新建监控'" style="width: 560px">
@@ -163,10 +171,10 @@
 
 <script setup lang="ts">
 import { h, ref, computed, onMounted } from 'vue'
-import { useMessage, useDialog, NTag, NButton, NIcon, NText, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NSwitch, NH3, NGrid, NGridItem, NDrawer, NDrawerContent, NTable, NPagination, NDropdown, NRadioGroup, NRadioButton } from 'naive-ui'
+import { useMessage, useDialog, NTag, NButton, NIcon, NText, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NSwitch, NH3, NGrid, NGridItem, NDrawer, NDrawerContent, NTable, NPagination, NDropdown, NRadioGroup, NRadioButton, NDivider } from 'naive-ui'
 import { AddOutline, PulseOutline, DownloadOutline, GridOutline, MailOutline, NotificationsOutline } from '@vicons/ionicons5'
 import {
-  fetchSiteMonitors, createSiteMonitor, updateSiteMonitor, deleteSiteMonitor, checkNow, fetchHistory, exportSla, fetchHeatmap, fetchMonitorGroups,
+  fetchSiteMonitors, createSiteMonitor, updateSiteMonitor, deleteSiteMonitor, checkNow, fetchHistory, exportSla, fetchHeatmap, fetchMonitorGroups, batchToggleAlert,
 } from '@/api/site-monitors'
 import { fetchGroups } from '@/api/notification-groups'
 import type { NotificationGroup } from '@/api/notification-groups'
@@ -178,6 +186,7 @@ const dialog = useDialog()
 const monitors = ref<SiteMonitor[]>([])
 const loading = ref(false)
 const saving = ref(false)
+const checkedRowKeys = ref<number[]>([])
 const showForm = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref()
@@ -290,6 +299,29 @@ function openHeatmap(row: SiteMonitor) {
   loadHeatmapForModal()
 }
 
+async function handleToggleAlert(row: SiteMonitor) {
+  try {
+    await updateSiteMonitor(row.id, { alert_enabled: !row.alert_enabled } as any)
+    row.alert_enabled = !row.alert_enabled
+    message.success(row.alert_enabled ? '已启用告警' : '已停止告警')
+  } catch (e: any) {
+    message.error(e.message || '操作失败')
+  }
+}
+
+async function handleBatchToggleAlert(enabled: boolean) {
+  if (!checkedRowKeys.value.length) return
+  const action = enabled ? '启用' : '停止'
+  try {
+    const resp = await batchToggleAlert(checkedRowKeys.value, enabled)
+    message.success(`已${action} ${resp.data.updated} 个监控项的告警`)
+    checkedRowKeys.value = []
+    await loadMonitors()
+  } catch (e: any) {
+    message.error(e.message || '操作失败')
+  }
+}
+
 async function loadMonitors() {
   loading.value = true
   try {
@@ -387,6 +419,7 @@ function fmtTime(val: string | null) {
 }
 
 const columns = [
+  { type: 'selection' as const },
   { title: '名称', key: 'name', width: 140, ellipsis: { tooltip: true } },
   {
     title: '分组', key: 'group_name', width: 90,
@@ -407,7 +440,7 @@ const columns = [
   },
   {
     title: '告警', key: 'alert_enabled', width: 70,
-    render: (r: SiteMonitor) => h(NTag, { type: r.alert_enabled ? 'default' : 'default', size: 'small' }, () => r.alert_enabled ? '开' : '关'),
+    render: (r: SiteMonitor) => h(NSwitch, { size: 'small', value: r.alert_enabled, onUpdateValue: () => handleToggleAlert(r) }),
   },
   { title: '最后检查', key: 'last_checked_at', width: 150, render: (r: SiteMonitor) => fmtTime(r.last_checked_at) },
   {

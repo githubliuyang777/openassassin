@@ -247,3 +247,13 @@ def check_all_monitors():
     for m in monitors:
         if m.last_checked_at is None or (now - m.last_checked_at).total_seconds() >= m.check_interval:
             run_single_check(m)
+
+
+def batch_toggle_alert(db: Session, ids: list[int], enabled: bool) -> int:
+    """Batch enable/disable alerts for site monitors."""
+    query = db.query(SiteMonitor)
+    if ids:
+        query = query.filter(SiteMonitor.id.in_(ids))
+    count = query.update({"alert_enabled": enabled}, synchronize_session=False)
+    db.commit()
+    return count

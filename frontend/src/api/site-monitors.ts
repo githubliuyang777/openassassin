@@ -101,6 +101,10 @@ export interface HeatmapCell {
   is_up: boolean
 }
 
+export function batchToggleAlert(ids: number[], enabled: boolean) {
+  return api.post<{ updated: number; monitors: SiteMonitor[] }>('/site-monitors/batch-toggle-alert', { ids, enabled })
+}
+
 export function fetchHeatmap(id: number, days = 7) {
   return api.get<HeatmapCell[]>('/site-monitors/' + id + '/heatmap', { params: { days } })
 }
