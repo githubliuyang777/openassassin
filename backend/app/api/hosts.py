@@ -2,15 +2,16 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Query, status, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from jose import JWTError
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
-from app.schemas.host import HostCreate, HostUpdate, HostResponse
+from app.schemas.host import HostCreate, HostUpdate, HostResponse, HostImportRequest
 from app.services import host_service, ssh_service
 from app.services.auth_service import decode_token
+from app.services.aws_service import AwsError
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -87,7 +88,53 @@ def delete_host(
     host_service.delete_host(db, host)
 
 
+@router.get("/{host_id}/agent-token")
+def get_agent_token(host_id: int, db: Session = Depends(get_db), _user: dict = Depends(get_current_user)):
+    host = host_service.get_host(db, host_id)
+    if not host:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="主机不存在")
+    if not host.agent_token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="该主机未激活 Agent")
+    return {"agent_token": host.agent_token}
+
+
+@router.post("/{host_id}/regenerate-token")
+def regenerate_agent_token(host_id: int, db: Session = Depends(get_db), _user: dict = Depends(get_current_user)):
+    try:
+        token = host_service.regenerate_agent_token(db, host_id)
+    except host_service.HostNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    return {"agent_token": token}
+
+
+@router.get("/{host_id}/metrics")
+def get_host_metrics(host_id: int, hours: int = Query(24, ge=1, le=168), db: Session = Depends(get_db), _user: dict = Depends(get_current_user)):
+    host = host_service.get_host(db, host_id)
+    if not host:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="主机不存在")
+    return {"items": host_service.get_host_metrics(db, host_id, hours)}
+
+
+@router.get("/{host_id}/metrics/latest")
+def get_latest_metric(host_id: int, db: Session = Depends(get_db), _user: dict = Depends(get_current_user)):
+    host = host_service.get_host(db, host_id)
+    if not host:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="主机不存在")
+    metric = host_service.get_latest_metric(db, host_id)
+    if not metric:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="暂无监控数据")
+    return metric
+
+
 @router.websocket("/{host_id}/terminal")
+@router.post("/import", response_model=HostResponse, status_code=status.HTTP_201_CREATED)
+def import_ec2_host(data: HostImportRequest, db: Session = Depends(get_db), _user: dict = Depends(get_current_user)):
+    try:
+        return host_service.import_from_ec2(db, data)
+    except AwsError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
 async def terminal(host_id: int, websocket: WebSocket, token: str = ""):
     if not token:
         await websocket.close(code=4001, reason="Missing token")

@@ -311,11 +311,13 @@ async def lifespan(app: FastAPI):
     cleanup_task = asyncio.create_task(_audit_cleanup_loop())
     sub_task = asyncio.create_task(_subscription_check_loop())
     site_task = asyncio.create_task(_site_monitor_check_loop())
+    agent_task = asyncio.create_task(_host_agent_check_loop())
     yield
     task.cancel()
     cleanup_task.cancel()
     sub_task.cancel()
     site_task.cancel()
+    agent_task.cancel()
 
 
 app = FastAPI(title="openAssassin", version="0.1.0", lifespan=lifespan)

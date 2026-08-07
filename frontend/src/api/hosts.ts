@@ -8,6 +8,14 @@ export interface Host {
   username: string
   credential_id: number | null
   description: string
+  agent_version: string
+  last_seen_at: string | null
+  is_online: boolean
+  cpu_usage: number
+  mem_usage: number
+  disk_usage: number
+  alert_enabled: boolean
+  notification_group_id: number | null
   created_at: string
   updated_at: string
 }

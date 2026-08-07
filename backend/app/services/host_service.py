@@ -1,9 +1,15 @@
+from datetime import timedelta
+
 from sqlalchemy.orm import Session
 
+from app.database import china_now
 from app.models.host import Host
+from app.models.host_metric import HostMetric
 from app.models.credential import Credential
-from app.schemas.host import HostCreate, HostUpdate
+from app.schemas.host import HostCreate, HostUpdate, HostImportRequest
 from app.services.credential_service import decrypt
+from app.services.aws_service import AwsError, get_boto3_session
+from app.services.agent_service import generate_agent_token_unique
 
 
 class HostNotFoundError(ValueError):
@@ -25,7 +31,7 @@ def get_host(db: Session, host_id: int) -> Host | None:
 
 
 def create_host(db: Session, data: HostCreate) -> Host:
-    host = Host(**data.model_dump())
+    host = Host(**data.model_dump(), agent_token=generate_agent_token_unique(db))
     db.add(host)
     db.commit()
     db.refresh(host)
@@ -43,6 +49,56 @@ def update_host(db: Session, host: Host, data: HostUpdate) -> Host:
 def delete_host(db: Session, host: Host) -> None:
     db.delete(host)
     db.commit()
+
+
+def import_from_ec2(db: Session, data: HostImportRequest) -> Host:
+    from app.services.aws_service import _ec2_client, _describe_instances, _parse_ec2_instance
+    session = get_boto3_session(db, data.aws_credential_id)
+    if data.credential_id is not None:
+        cred = db.query(Credential).filter(Credential.id == data.credential_id).first()
+        if not cred:
+            raise AwsError(f"SSH 凭证 id={data.credential_id} 不存在")
+        if cred.type not in ("ssh_key", "ssh_password", "generic"):
+            raise AwsError("SSH 凭证类型不正确")
+    try:
+        ec2 = _ec2_client(session, data.aws_region)
+        raw = _describe_instances(ec2, InstanceIds=[data.aws_instance_id])
+    except Exception as exc:
+        raise AwsError(f"EC2 DescribeInstances 失败: {exc}") from exc
+    if not raw:
+        raise AwsError(f"实例 {data.aws_instance_id} 未找到")
+    inst = _parse_ec2_instance(raw[0])
+    host = Host(
+        name=data.name or inst["name"],
+        hostname=inst["public_ip"] or inst["private_ip"] or inst["instance_id"],
+        port=data.port or 22, username=data.username or "root",
+        credential_id=data.credential_id,
+        aws_instance_id=data.aws_instance_id,
+        aws_region=data.aws_region,
+        aws_credential_id=data.aws_credential_id,
+        description=data.description or f"EC2: {data.aws_instance_id}",
+        agent_token=generate_agent_token_unique(db),
+    )
+    db.add(host); db.commit(); db.refresh(host); return host
+
+
+def regenerate_agent_token(db: Session, host_id: int) -> str:
+    host = db.query(Host).filter(Host.id == host_id).first()
+    if not host:
+        raise HostNotFoundError("主机不存在")
+    host.agent_token = generate_agent_token_unique(db)
+    db.commit()
+    return host.agent_token
+
+
+def get_host_metrics(db: Session, host_id: int, hours: int = 24) -> list[dict]:
+    from app.services.agent_service import get_host_metrics as _get_metrics
+    return _get_metrics(db, host_id, hours)
+
+
+def get_latest_metric(db: Session, host_id: int) -> dict | None:
+    from app.services.agent_service import get_latest_metric as _get_latest
+    return _get_latest(db, host_id)
 
 
 def get_ssh_connection_info(db: Session, host_id: int) -> dict:
