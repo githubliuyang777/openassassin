@@ -1,10 +1,15 @@
+from datetime import timedelta
+
 from sqlalchemy.orm import Session
 
+from app.database import china_now
 from app.models.host import Host
+from app.models.host_metric import HostMetric
 from app.models.credential import Credential
 from app.schemas.host import HostCreate, HostUpdate, HostImportRequest
 from app.services.credential_service import decrypt
 from app.services.aws_service import AwsError, get_boto3_session
+from app.services.agent_service import generate_agent_token_unique
 
 
 class HostNotFoundError(ValueError):
@@ -26,7 +31,7 @@ def get_host(db: Session, host_id: int) -> Host | None:
 
 
 def create_host(db: Session, data: HostCreate) -> Host:
-    host = Host(**data.model_dump())
+    host = Host(**data.model_dump(), agent_token=generate_agent_token_unique(db))
     db.add(host)
     db.commit()
     db.refresh(host)
@@ -107,8 +112,28 @@ def import_from_ec2(db: Session, data: HostImportRequest) -> Host:
         aws_region=data.aws_region,
         aws_credential_id=data.aws_credential_id,
         description=data.description or f"EC2: {data.aws_instance_id} ({inst['instance_type']}, {inst['availability_zone']})",
+        agent_token=generate_agent_token_unique(db),
     )
     db.add(host)
     db.commit()
     db.refresh(host)
     return host
+
+
+def regenerate_agent_token(db: Session, host_id: int) -> str:
+    host = db.query(Host).filter(Host.id == host_id).first()
+    if not host:
+        raise HostNotFoundError("主机不存在")
+    host.agent_token = generate_agent_token_unique(db)
+    db.commit()
+    return host.agent_token
+
+
+def get_host_metrics(db: Session, host_id: int, hours: int = 24) -> list[dict]:
+    from app.services.agent_service import get_host_metrics as _get_metrics
+    return _get_metrics(db, host_id, hours)
+
+
+def get_latest_metric(db: Session, host_id: int) -> dict | None:
+    from app.services.agent_service import get_latest_metric as _get_latest
+    return _get_latest(db, host_id)

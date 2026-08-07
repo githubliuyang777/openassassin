@@ -9,7 +9,7 @@ from app.middleware.audit_middleware import AuditMiddleware
 from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.services.auth_service import get_or_create_admin
-from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors, notification_groups, notification_recipients, dingtalk, aws
+from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors, notification_groups, notification_recipients, dingtalk, aws, agents
 
 
 def _migrate(table: str, columns: list[tuple[str, str]]):
@@ -112,6 +112,23 @@ def _migrate_hosts_aws_fields():
         ("aws_instance_id", "VARCHAR(32)"),
         ("aws_region", "VARCHAR(32)"),
         ("aws_credential_id", "INTEGER"),
+    ])
+
+
+def _migrate_hosts_agent_fields():
+    # SQLite ALTER TABLE does not support UNIQUE, so agent_token
+    # uniqueness is enforced in application code (generate_agent_token_unique).
+    _migrate("hosts", [
+        ("agent_token", "VARCHAR(64)"),
+        ("agent_version", "VARCHAR(16) DEFAULT ''"),
+        ("last_seen_at", "DATETIME"),
+        ("is_online", "BOOLEAN DEFAULT 0"),
+        ("cpu_usage", "FLOAT DEFAULT 0.0"),
+        ("mem_usage", "FLOAT DEFAULT 0.0"),
+        ("disk_usage", "FLOAT DEFAULT 0.0"),
+        ("alert_enabled", "BOOLEAN DEFAULT 1"),
+        ("notification_group_id", "INTEGER"),
+        ("last_alerted_at", "DATETIME"),
     ])
 
 
@@ -319,6 +336,32 @@ async def _site_monitor_check_loop():
             pass
 
 
+async def _host_agent_check_loop():
+    """Background task: detect offline hosts and clean up old metrics."""
+    _last_cleanup_date = ""
+
+    while True:
+        await asyncio.sleep(60)
+        try:
+            from app.services.agent_service import check_offline_hosts, cleanup_old_metrics
+            from datetime import datetime, timezone
+
+            db = SessionLocal()
+            try:
+                # Offline detection runs every cycle
+                await asyncio.to_thread(check_offline_hosts, db)
+
+                # Metrics cleanup runs once per day
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                if _last_cleanup_date != today:
+                    await asyncio.to_thread(cleanup_old_metrics, db)
+                    _last_cleanup_date = today
+            finally:
+                db.close()
+        except Exception:
+            pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     os.makedirs("data", exist_ok=True)
@@ -330,6 +373,7 @@ async def lifespan(app: FastAPI):
     _migrate_domain_whois_table()
     _migrate_hosts_table()
     _migrate_hosts_aws_fields()
+    _migrate_hosts_agent_fields()
     _migrate_audit_logs_table()
     _migrate_subscriptions_table()
     _migrate_site_monitors_table()
@@ -341,11 +385,13 @@ async def lifespan(app: FastAPI):
     cleanup_task = asyncio.create_task(_audit_cleanup_loop())
     sub_task = asyncio.create_task(_subscription_check_loop())
     site_task = asyncio.create_task(_site_monitor_check_loop())
+    agent_task = asyncio.create_task(_host_agent_check_loop())
     yield
     task.cancel()
     cleanup_task.cancel()
     sub_task.cancel()
     site_task.cancel()
+    agent_task.cancel()
 
 
 app = FastAPI(title="openAssassin", version="0.1.0", lifespan=lifespan)
@@ -382,6 +428,7 @@ app.include_router(notification_groups.router, prefix="/api/v1")
 app.include_router(notification_recipients.router, prefix="/api/v1")
 app.include_router(dingtalk.router, prefix="/api/v1")
 app.include_router(aws.router, prefix="/api/v1")
+app.include_router(agents.router, prefix="/api/v1")
 
 
 @app.get("/api/health")
