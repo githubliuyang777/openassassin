@@ -11,7 +11,6 @@ from app.middleware.auth_middleware import get_current_user
 from app.schemas.host import HostCreate, HostUpdate, HostResponse, HostImportRequest
 from app.services import host_service, ssh_service
 from app.services.auth_service import decode_token
-from app.services.aws_service import AwsError
 from app.config import settings
 
 logger = logging.getLogger(__name__)

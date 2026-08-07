@@ -8,7 +8,6 @@ from app.models.host_metric import HostMetric
 from app.models.credential import Credential
 from app.schemas.host import HostCreate, HostUpdate, HostImportRequest
 from app.services.credential_service import decrypt
-from app.services.aws_service import AwsError, get_boto3_session
 from app.services.agent_service import generate_agent_token_unique
 
 
