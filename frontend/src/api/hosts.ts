@@ -7,6 +7,9 @@ export interface Host {
   port: number
   username: string
   credential_id: number | null
+  aws_instance_id: string | null
+  aws_region: string | null
+  aws_credential_id: number | null
   description: string
   agent_version: string
   last_seen_at: string | null
@@ -26,25 +29,61 @@ export interface HostCreate {
   port: number
   username: string
   credential_id: number | null
+  aws_instance_id: string | null
+  aws_region: string | null
+  aws_credential_id: number | null
   description: string
 }
 
-export function fetchHosts() {
-  return api.get<Host[]>('/hosts')
+export interface HostUpdate {
+  name?: string
+  hostname?: string
+  port?: number
+  username?: string
+  credential_id?: number | null
+  aws_instance_id?: string | null
+  aws_region?: string | null
+  aws_credential_id?: number | null
+  description?: string
+  alert_enabled?: boolean
+  notification_group_id?: number | null
 }
 
-export function fetchHost(id: number) {
-  return api.get<Host>(`/hosts/${id}`)
+export interface HostImportRequest {
+  aws_credential_id: number
+  aws_region: string
+  aws_instance_id: string
+  name?: string
+  username?: string
+  port?: number
+  credential_id?: number | null
+  description?: string
 }
 
-export function createHost(data: HostCreate) {
-  return api.post<Host>('/hosts', data)
+export interface HostMetric {
+  collected_at: string | null
+  cpu_percent: number
+  mem_percent: number
+  disk_percent: number
+  load_1m: number
 }
 
-export function updateHost(id: number, data: Partial<HostCreate>) {
-  return api.put<Host>(`/hosts/${id}`, data)
+export interface LatestMetric {
+  id: number; host_id: number; cpu_percent: number
+  mem_total_mb: number; mem_used_mb: number; mem_percent: number
+  disk_total_gb: number; disk_used_gb: number; disk_percent: number
+  load_1m: number; load_5m: number; load_15m: number
+  net_rx_bytes: number; net_tx_bytes: number
+  process_count: number; uptime_seconds: number; collected_at: string | null
 }
 
-export function deleteHost(id: number) {
-  return api.delete(`/hosts/${id}`)
-}
+export function fetchHosts() { return api.get<Host[]>('/hosts') }
+export function fetchHost(id: number) { return api.get<Host>(`/hosts/${id}`) }
+export function createHost(data: HostCreate) { return api.post<Host>('/hosts', data) }
+export function importFromEc2(data: HostImportRequest) { return api.post<Host>('/hosts/import', data) }
+export function updateHost(id: number, data: HostUpdate) { return api.put<Host>(`/hosts/${id}`, data) }
+export function deleteHost(id: number) { return api.delete(`/hosts/${id}`) }
+export function fetchHostMetrics(id: number, hours = 24) { return api.get<{ items: HostMetric[] }>(`/hosts/${id}/metrics`, { params: { hours } }) }
+export function fetchLatestMetrics(id: number) { return api.get<LatestMetric>(`/hosts/${id}/metrics/latest`) }
+export function fetchAgentToken(id: number) { return api.get<{ agent_token: string }>(`/hosts/${id}/agent-token`) }
+export function regenerateAgentToken(id: number) { return api.post<{ agent_token: string }>(`/hosts/${id}/regenerate-token`) }
