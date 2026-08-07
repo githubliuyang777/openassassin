@@ -1,0 +1,59 @@
+name: Release Host Agent
+
+on:
+  push:
+    tags:
+      - 'agent-v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build (linux/amd64)
+        working-directory: host-agent
+        run: |
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+            go build -ldflags="-s -w -X main.Version=${GITHUB_REF_NAME#agent-v}" \
+            -o dist/host-agent-linux-amd64 .
+
+      - name: Build (linux/arm64)
+        working-directory: host-agent
+        run: |
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
+            go build -ldflags="-s -w -X main.Version=${GITHUB_REF_NAME#agent-v}" \
+            -o dist/host-agent-linux-arm64 .
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Host Agent ${{ github.ref_name }}"
+          body: |
+            ### host-agent ${{ github.ref_name }}
+
+            用于 openAssassin 平台的主机监控 Agent，采集 CPU/内存/磁盘/负载/网络指标并上报。
+
+            #### 安装
+            ```bash
+            # 获取 token（在平台主机管理中查看）
+            curl -fsSL https://github.com/githubliuyang777/openassassin/releases/latest/download/install.sh | bash -s -- \
+              --server https://your-platform.example.com \
+              --token oa_YOUR_AGENT_TOKEN
+            ```
+
+            #### 手动下载
+            - [host-agent-linux-amd64](https://github.com/githubliuyang777/openassassin/releases/download/${{ github.ref_name }}/host-agent-linux-amd64)
+            - [host-agent-linux-arm64](https://github.com/githubliuyang777/openassassin/releases/download/${{ github.ref_name }}/host-agent-linux-arm64)
+          files: |
+            host-agent/dist/host-agent-linux-amd64
+            host-agent/dist/host-agent-linux-arm64
+          generate_release_notes: true
