@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     totp_issuer: str = "openAssassin"
     totp_mfa_token_minutes: int = 2
     totp_setup_token_minutes: int = 5
+    # Host agent monitoring
+    host_agent_offline_minutes: int = 5
+    host_agent_metrics_retention_days: int = 7
+    host_agent_alert_cpu_percent: float = 90.0
+    host_agent_alert_mem_percent: float = 90.0
+    host_agent_alert_disk_percent: float = 85.0
 
     @property
     def cors_origin_list(self) -> list[str]:

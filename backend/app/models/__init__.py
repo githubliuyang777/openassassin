@@ -5,3 +5,4 @@ from app.models.execution import Execution
 from app.models.domain import Domain
 from app.models.domain_whois import DomainWhois
 from app.models.dingtalk import DingTalkConfig
+from app.models.host_metric import HostMetric

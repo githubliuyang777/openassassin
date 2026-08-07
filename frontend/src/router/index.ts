@@ -36,6 +36,7 @@ const router = createRouter({
         { path: 'notepads', name: 'Notepads', component: () => import('@/views/NotepadView.vue') },
         { path: 'subscriptions', name: 'Subscriptions', component: () => import('@/views/SubscriptionView.vue') },
         { path: 'hosts', name: 'Hosts', component: () => import('@/views/HostListView.vue') },
+        { path: 'hosts/:id', name: 'HostDetail', component: () => import('@/views/HostDetailView.vue') },
         { path: 'hosts/:id/terminal', name: 'HostTerminal', component: () => import('@/views/HostTerminalView.vue') },
         { path: 'system/audit-logs', name: 'AuditLogs', component: () => import('@/views/AuditLogView.vue') },
         { path: 'system/network-test', name: 'NetworkTest', component: () => import('@/views/NetworkTestView.vue') },

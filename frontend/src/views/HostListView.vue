@@ -137,12 +137,12 @@
 <script setup lang="ts">
 import { h, ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useMessage, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NH3, NGrid, NGridItem, NText, useDialog } from 'naive-ui'
+import { useMessage, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NH3, NGrid, NGridItem, NText, NProgress, useDialog } from 'naive-ui'
 import { AddOutline, PlayOutline, CloudOutline } from '@vicons/ionicons5'
-import { fetchHosts, createHost, updateHost, deleteHost, importFromEc2 } from '@/api/hosts'
+import { fetchHosts, createHost, updateHost, deleteHost, importFromEc2, regenerateAgentToken } from '@/api/hosts'
 import { fetchCredentials, getTypeLabel } from '@/api/credentials'
 import { fetchInstances, fetchRegions, type Ec2Instance } from '@/api/aws'
-import type { Host, HostCreate } from '@/api/hosts'
+import type { Host, HostCreate, HostUpdate } from '@/api/hosts'
 import type { Credential } from '@/api/credentials'
 import type { DataTableColumn } from 'naive-ui'
 
@@ -244,24 +244,93 @@ function getCredentialLabel(credId: number | null) {
 }
 
 const columns: DataTableColumn<Host>[] = [
-  { title: '名称', key: 'name', width: 160 },
-  { title: '主机地址', key: 'hostname', width: 180, render: (r) => `${r.hostname}:${r.port}` },
-  { title: '用户名', key: 'username', width: 90 },
-  { title: '凭证', key: 'credential_id', width: 130, render: (r) => getCredentialLabel(r.credential_id) },
-  { title: '描述', key: 'description', width: 160, ellipsis: { tooltip: true }, render: (r) => r.description || '-' },
-  { title: '更新时间', key: 'updated_at', width: 170, render: (r) => formatTime(r.updated_at) },
+  { title: '名称', key: 'name', width: 140 },
+  { title: '主机地址', key: 'hostname', width: 170, render: (r) => `${r.hostname}:${r.port}` },
+  { title: '用户名', key: 'username', width: 80 },
   {
-    title: '操作', key: 'actions', width: 160,
+    title: '在线', key: 'is_online', width: 60,
+    render: (r) => h(NTag, { type: r.is_online ? 'success' : 'default', size: 'small', round: true },
+      () => r.is_online ? '在线' : '离线'),
+  },
+  {
+    title: 'CPU', key: 'cpu_usage', width: 100,
+    render: (r) => {
+      const pct = r.cpu_usage || 0
+      const color = pct >= 90 ? '#d03050' : pct >= 70 ? '#f0a020' : '#18a058'
+      return h('div', { style: 'display:flex;align-items:center;gap:6px' }, [
+        h(NProgress, { percentage: pct, color, height: 6, style: 'flex:1;min-width:50px',
+          showIndicator: false, borderRaius: 3 }),
+        h('span', { style: 'font-size:12px;white-space:nowrap' }, `${pct}%`),
+      ])
+    },
+  },
+  {
+    title: '内存', key: 'mem_usage', width: 100,
+    render: (r) => {
+      const pct = r.mem_usage || 0
+      const color = pct >= 90 ? '#d03050' : pct >= 70 ? '#f0a020' : '#18a058'
+      return h('div', { style: 'display:flex;align-items:center;gap:6px' }, [
+        h(NProgress, { percentage: pct, color, height: 6, style: 'flex:1;min-width:50px',
+          showIndicator: false, borderRaius: 3 }),
+        h('span', { style: 'font-size:12px;white-space:nowrap' }, `${pct}%`),
+      ])
+    },
+  },
+  {
+    title: '最后上报', key: 'last_seen_at', width: 90,
+    render: (r) => h('span', { style: 'font-size:12px' }, relativeTime(r.last_seen_at)),
+  },
+  { title: '凭证', key: 'credential_id', width: 110, render: (r) => getCredentialLabel(r.credential_id) },
+  { title: '描述', key: 'description', width: 130, ellipsis: { tooltip: true }, render: (r) => r.description || '-' },
+  { title: '更新时间', key: 'updated_at', width: 150, render: (r) => formatTime(r.updated_at) },
+  {
+    title: '操作', key: 'actions', width: 200,
     render: (row) => h(NSpace, { size: 'small' }, {
       default: () => [
         h(NButton, { size: 'small', type: 'primary', ghost: true, onClick: () => handleConnect(row) },
           { icon: () => h(NIcon, null, () => h(PlayOutline)), default: () => '连接' }),
         h(NButton, { size: 'small', quaternary: true, onClick: () => handleEdit(row) }, { default: () => '编辑' }),
+        h(NButton, { size: 'small', quaternary: true, onClick: () => handleRegenToken(row) }, { default: () => 'Token' }),
         h(NButton, { size: 'small', quaternary: true, type: 'error', onClick: () => handleDelete(row) }, { default: () => '删除' }),
       ],
     }),
   },
 ]
+
+function relativeTime(val: string | null): string {
+  if (!val) return '-'
+  const diff = Date.now() - new Date(val).getTime()
+  const sec = Math.floor(diff / 1000)
+  if (sec < 60) return '刚刚'
+  if (sec < 3600) return `${Math.floor(sec / 60)}分钟前`
+  if (sec < 86400) return `${Math.floor(sec / 3600)}小时前`
+  return `${Math.floor(sec / 86400)}天前`
+}
+
+async function handleRegenToken(row: Host) {
+  dialog.warning({
+    title: '重新生成 Agent Token',
+    content: `确定要重新生成 "${row.name}" 的 Agent Token 吗？旧的 Token 将立即失效。`,
+    positiveText: '确认',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        const resp = await regenerateAgentToken(row.id)
+        const token = resp.data.agent_token
+        dialog.success({
+          title: '新 Token',
+          content: `主机 "${row.name}" 的新 Token:\n\n${token}\n\n请复制保存，关闭后无法再次查看。`,
+          positiveText: '复制',
+          onPositiveClick: () => {
+            navigator.clipboard.writeText(token).catch(() => {})
+          },
+        })
+      } catch (e: any) {
+        message.error(e.message || '生成失败')
+      }
+    },
+  })
+}
 
 function formatTime(val: string | null) {
   if (!val) return '-'

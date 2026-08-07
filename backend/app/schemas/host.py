@@ -35,6 +35,8 @@ class HostUpdate(BaseModel):
     aws_region: str | None = None
     aws_credential_id: int | None = None
     description: str | None = None
+    alert_enabled: bool | None = None
+    notification_group_id: int | None = None
 
 
 class HostResponse(BaseModel):
@@ -48,6 +50,14 @@ class HostResponse(BaseModel):
     aws_region: str | None = None
     aws_credential_id: int | None = None
     description: str
+    agent_version: str = ""
+    last_seen_at: datetime | None = None
+    is_online: bool = False
+    cpu_usage: float = 0.0
+    mem_usage: float = 0.0
+    disk_usage: float = 0.0
+    alert_enabled: bool = True
+    notification_group_id: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
