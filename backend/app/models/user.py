@@ -22,4 +22,8 @@ class User(Base):
     totp_failed_at = Column(DateTime, nullable=True)
     backup_codes = Column(String, nullable=True)
     backup_codes_used = Column(Integer, default=0)
+    # Login security
+    login_failed_attempts = Column(Integer, default=0)
+    login_failed_at = Column(DateTime, nullable=True)
+    login_alert_sent = Column(Integer, default=0)
     created_at = Column(DateTime, default=china_now)

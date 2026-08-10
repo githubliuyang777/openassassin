@@ -36,6 +36,9 @@ def _migrate_users_table():
         ("totp_failed_at", "DATETIME"),
         ("backup_codes", "TEXT"),
         ("backup_codes_used", "INTEGER DEFAULT 0"),
+        ("login_failed_attempts", "INTEGER DEFAULT 0"),
+        ("login_failed_at", "DATETIME"),
+        ("login_alert_sent", "INTEGER DEFAULT 0"),
     ])
 
 
