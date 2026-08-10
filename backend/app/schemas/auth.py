@@ -87,7 +87,6 @@ class MfaSetupVerifyEmailResponse(BaseModel):
 
 
 class MfaSetupConfirmRequest(BaseModel):
-    setup_token: str
     totp_code: str = Field(min_length=6, max_length=6)
 
 

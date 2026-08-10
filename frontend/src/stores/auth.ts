@@ -60,8 +60,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function confirmMfaSetup(setupToken: string, totpCode: string) {
     const res = await api.post('/auth/mfa/setup/confirm', {
-      setup_token: setupToken,
       totp_code: totpCode,
+    }, {
+      headers: { Authorization: `Bearer ${setupToken}` },
     })
     return res.data as { backup_codes: string[]; message: string }
   }
