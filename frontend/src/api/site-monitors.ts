@@ -104,3 +104,11 @@ export interface HeatmapCell {
 export function fetchHeatmap(id: number, days = 7) {
   return api.get<HeatmapCell[]>('/site-monitors/' + id + '/heatmap', { params: { days } })
 }
+
+export function batchToggleAlert(ids: number[], enabled: boolean) {
+  return api.post('/site-monitors/batch-toggle-alert', { ids, enabled })
+}
+
+export function batchSetNotificationGroup(ids: number[], groupId: number | null) {
+  return api.post('/site-monitors/batch-set-notification-group', { ids, group_id: groupId })
+}
