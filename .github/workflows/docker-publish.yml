@@ -1,0 +1,83 @@
+name: Build & Push Docker Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '镜像标签 (如 latest, v1.0.0)'
+        required: false
+        default: 'latest'
+      backend_only:
+        description: '仅构建后端'
+        required: false
+        type: boolean
+        default: false
+      frontend_only:
+        description: '仅构建前端'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_REPO }}
+
+jobs:
+  build-backend:
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.frontend_only }}
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.DOCKERHUB_REPO }}-backend:${{ inputs.tag || 'latest' }}
+            ${{ env.DOCKERHUB_REPO }}-backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.backend_only }}
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.DOCKERHUB_REPO }}-frontend:${{ inputs.tag || 'latest' }}
+            ${{ env.DOCKERHUB_REPO }}-frontend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
