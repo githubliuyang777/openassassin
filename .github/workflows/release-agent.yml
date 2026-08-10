@@ -59,4 +59,5 @@ jobs:
           files: |
             host-agent/dist/host-agent-linux-amd64
             host-agent/dist/host-agent-linux-arm64
+            host-agent/install.sh
           generate_release_notes: true
