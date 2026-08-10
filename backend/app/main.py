@@ -290,6 +290,27 @@ async def _site_monitor_check_loop():
             pass
 
 
+async def _host_agent_check_loop():
+    """Background task: detect offline hosts and clean up old metrics."""
+    _last_cleanup_date = ""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            from app.services.agent_service import check_offline_hosts, cleanup_old_metrics
+            from datetime import datetime, timezone
+            db = SessionLocal()
+            try:
+                await asyncio.to_thread(check_offline_hosts, db)
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                if _last_cleanup_date != today:
+                    await asyncio.to_thread(cleanup_old_metrics, db)
+                    _last_cleanup_date = today
+            finally:
+                db.close()
+        except Exception:
+            pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     os.makedirs("data", exist_ok=True)
