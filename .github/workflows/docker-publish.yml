@@ -24,7 +24,7 @@ env:
 jobs:
   build-backend:
     runs-on: ubuntu-latest
-    if: ${{ !inputs.frontend_only }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.frontend_only != 'true' }}
     timeout-minutes: 10
 
     steps:
@@ -54,7 +54,7 @@ jobs:
 
   build-frontend:
     runs-on: ubuntu-latest
-    if: ${{ !inputs.backend_only }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.backend_only != 'true' }}
     timeout-minutes: 10
 
     steps:
