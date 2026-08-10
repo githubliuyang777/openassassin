@@ -52,6 +52,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function changePassword(oldPassword: string, newPassword: string) {
     await api.put('/auth/password', { old_password: oldPassword, new_password: newPassword })
+    await logout()
   }
 
   async function initMfaSetup() {
