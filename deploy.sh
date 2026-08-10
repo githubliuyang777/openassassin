@@ -16,7 +16,7 @@ set -euo pipefail
 #   IMAGE_TAG       - 镜像标签 (默认: latest)
 # ============================================================
 
-DOCKERHUB_REPO="${DOCKERHUB_REPO:-githubliuyang777/openassassin}"
+DOCKERHUB_REPO="${DOCKERHUB_REPO:-openassassin/openassassin}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 MODE="pull"
 
