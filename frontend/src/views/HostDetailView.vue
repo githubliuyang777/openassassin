@@ -235,7 +235,7 @@ function drawChart() {
   const h = el.clientHeight
   if (w === 0 || h === 0) return
 
-  const padding = { top: 12, right: 20, bottom: 32, left: 40 }
+  const padding = { top: 12, right: 20, bottom: 50, left: 40 }
   const pw = w - padding.left - padding.right
   const ph = h - padding.top - padding.bottom
 
@@ -284,7 +284,7 @@ function drawChart() {
       const label = chartHours.value >= 168
         ? `${d.getMonth() + 1}/${d.getDate()}`
         : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-      ctx.fillText(label, xScale(i) - 15, h - padding.bottom + 14)
+      ctx.fillText(label, xScale(i) - 15, h - padding.bottom + 10)
     }
   }
 
@@ -299,12 +299,13 @@ function drawChart() {
     ctx.stroke()
   }
 
-  // Legend
+  // Legend (inside bottom padding)
+  const legendY = h - padding.bottom + 20
   let lx = padding.left
   for (const s of series) {
-    ctx.fillStyle = s.color; ctx.fillRect(lx, h - 4, 10, 10)
+    ctx.fillStyle = s.color; ctx.fillRect(lx, legendY - 8, 10, 10)
     ctx.fillStyle = '#666'; ctx.font = '10px sans-serif'
-    ctx.fillText(s.label, lx + 13, h + 5)
+    ctx.fillText(s.label, lx + 13, legendY + 1)
     lx += ctx.measureText(s.label).width + 30
   }
 
