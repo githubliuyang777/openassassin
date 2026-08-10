@@ -1,6 +1,11 @@
 name: Build & Push Docker Images
 
 on:
+  push:
+    branches: [master]
+  pull_request:
+    types: [closed]
+    branches: [master]
   workflow_dispatch:
     inputs:
       tag:
@@ -24,7 +29,10 @@ env:
 jobs:
   build-backend:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.frontend_only != 'true' }}
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      (github.event_name == 'workflow_dispatch' && inputs.frontend_only != 'true')
     timeout-minutes: 10
 
     steps:
@@ -54,7 +62,10 @@ jobs:
 
   build-frontend:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.backend_only != 'true' }}
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      (github.event_name == 'workflow_dispatch' && inputs.backend_only != 'true')
     timeout-minutes: 10
 
     steps:
