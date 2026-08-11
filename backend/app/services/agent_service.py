@@ -31,6 +31,8 @@ def process_report(db: Session, host_id: int, data: AgentReportRequest) -> None:
     host = db.query(Host).filter(Host.id == host_id).first()
     if host:
         host.cpu_usage = data.cpu_percent
+        if data.cpu_count > 0:
+            host.cpu_count = data.cpu_count
         host.mem_usage = data.mem_percent
         host.disk_usage = data.disk_percent
         if data.agent_version:
@@ -43,6 +45,7 @@ def process_report(db: Session, host_id: int, data: AgentReportRequest) -> None:
     metric = HostMetric(
         host_id=host_id,
         cpu_percent=data.cpu_percent,
+        cpu_count=data.cpu_count,
         mem_total_mb=data.mem_total_mb,
         mem_used_mb=data.mem_used_mb,
         mem_percent=data.mem_percent,
@@ -68,7 +71,7 @@ def get_all_host_status(db: Session) -> list[dict]:
         "id": h.id, "name": h.name, "hostname": h.hostname,
         "is_online": h.is_online,
         "last_seen_at": h.last_seen_at.isoformat() if h.last_seen_at else None,
-        "cpu_usage": h.cpu_usage, "mem_usage": h.mem_usage,
+        "cpu_usage": h.cpu_usage, "cpu_count": h.cpu_count, "mem_usage": h.mem_usage,
         "disk_usage": h.disk_usage, "agent_version": h.agent_version,
     } for h in hosts]
 
@@ -129,7 +132,7 @@ def get_latest_metric(db: Session, host_id: int) -> dict | None:
         return None
     return {
         "id": row.id, "host_id": row.host_id,
-        "cpu_percent": row.cpu_percent,
+        "cpu_percent": row.cpu_percent, "cpu_count": row.cpu_count,
         "mem_total_mb": row.mem_total_mb, "mem_used_mb": row.mem_used_mb,
         "mem_percent": row.mem_percent,
         "disk_total_gb": row.disk_total_gb, "disk_used_gb": row.disk_used_gb,

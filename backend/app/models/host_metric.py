@@ -8,6 +8,7 @@ class HostMetric(Base):
     id = Column(Integer, primary_key=True, index=True)
     host_id = Column(Integer, ForeignKey("hosts.id"), nullable=False, index=True)
     cpu_percent = Column(Float, default=0.0)
+    cpu_count = Column(Integer, default=0)
     mem_total_mb = Column(Float, default=0.0)
     mem_used_mb = Column(Float, default=0.0)
     mem_percent = Column(Float, default=0.0)
