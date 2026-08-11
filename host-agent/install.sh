@@ -53,6 +53,18 @@ echo ""
 INSTALL_PATH="/usr/local/bin/host-agent"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/host-agent-linux-${ARCH}"
 
+# Stop existing service if running
+if systemctl is-active --quiet host-agent 2>/dev/null; then
+    echo "Stopping existing host-agent service..."
+    systemctl stop host-agent
+fi
+
+# Remove existing binary to avoid overwrite failure
+if [ -f "$INSTALL_PATH" ]; then
+    echo "Removing existing binary: $INSTALL_PATH"
+    rm -f "$INSTALL_PATH"
+fi
+
 echo "Downloading host-agent from: $DOWNLOAD_URL"
 if command -v curl &> /dev/null; then
     curl -fsSL -o "$INSTALL_PATH" "$DOWNLOAD_URL" || {
