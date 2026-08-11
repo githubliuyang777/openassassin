@@ -77,8 +77,22 @@ def _migrate_audit_logs_table():
 def _migrate_hosts_table():
     _migrate("hosts", [
         ("description", "VARCHAR(512) DEFAULT ''"),
+        ("created_at", "DATETIME"),
         ("updated_at", "DATETIME"),
+        ("aws_instance_id", "VARCHAR(32)"),
+        ("aws_region", "VARCHAR(32)"),
+        ("aws_credential_id", "INTEGER"),
+        ("agent_token", "VARCHAR(64)"),
+        ("agent_version", "VARCHAR(16) DEFAULT ''"),
+        ("last_seen_at", "DATETIME"),
+        ("is_online", "BOOLEAN DEFAULT 0"),
+        ("cpu_usage", "FLOAT DEFAULT 0.0"),
         ("cpu_count", "INTEGER DEFAULT 0"),
+        ("mem_usage", "FLOAT DEFAULT 0.0"),
+        ("disk_usage", "FLOAT DEFAULT 0.0"),
+        ("alert_enabled", "BOOLEAN DEFAULT 1"),
+        ("notification_group_id", "INTEGER"),
+        ("last_alerted_at", "DATETIME"),
     ])
 
 
