@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - 'host-agent/**'
+  workflow_dispatch:
 
 permissions:
   contents: write
