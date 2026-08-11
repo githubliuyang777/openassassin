@@ -22,7 +22,7 @@
             <n-text strong style="font-size:18px">{{ cpuPercent }}%</n-text>
           </div>
           <n-text depth="3" style="font-size:11px;margin-top:4px" v-if="host">
-            {{ latest?.cpu_percent ?? host.cpu_usage ?? 0 }}% / 100% · {{ host.cpu_count || '-' }} 核
+            {{ latest?.cpu_percent ?? host.cpu_usage ?? 0 }}% / 100% · {{ latest?.cpu_count || host.cpu_count || '-' }} 核
           </n-text>
         </n-card>
       </n-grid-item>
