@@ -18,6 +18,7 @@ type ReportPayload struct {
 	Hostname      string  `json:"hostname"`
 	AgentVersion  string  `json:"agent_version"`
 	CPUPercent    float64 `json:"cpu_percent"`
+	CPUCount      int     `json:"cpu_count"`
 	MemPercent    float64 `json:"mem_percent"`
 	MemTotalMB    float64 `json:"mem_total_mb"`
 	MemUsedMB     float64 `json:"mem_used_mb"`
@@ -58,6 +59,7 @@ func (r *Reporter) Report(m *Metrics) error {
 		Hostname:      r.hostname,
 		AgentVersion:  r.version,
 		CPUPercent:    m.CPUPercent,
+		CPUCount:      m.CPUCount,
 		MemPercent:    m.MemPercent,
 		MemTotalMB:    m.MemTotalMB,
 		MemUsedMB:     m.MemUsedMB,
