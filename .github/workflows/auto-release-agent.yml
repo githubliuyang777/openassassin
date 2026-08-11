@@ -1,0 +1,53 @@
+name: Auto Release Agent
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'host-agent/**'
+
+permissions:
+  contents: write
+
+jobs:
+  auto-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest agent tag
+        id: get-tag
+        run: |
+          # 获取最新的 agent-v* 标签
+          LATEST_TAG=$(git tag -l 'agent-v*' --sort=-v:refname | head -1)
+          if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG="agent-v0.0.0"
+          fi
+          echo "latest=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+          echo "Latest agent tag: $LATEST_TAG"
+
+          # 解析版本号
+          VERSION=${LATEST_TAG#agent-v}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+          # 递增 patch 版本
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+          NEW_TAG="agent-v${NEW_VERSION}"
+
+          echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+          echo "New tag: $NEW_TAG"
+
+      - name: Create and push tag
+        run: |
+          NEW_TAG="${{ steps.get-tag.outputs.new_tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$NEW_TAG" -m "Auto release $NEW_TAG"
+          git push origin "$NEW_TAG"
+          echo "Pushed tag: $NEW_TAG"
