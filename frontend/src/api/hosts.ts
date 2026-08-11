@@ -15,6 +15,7 @@ export interface Host {
   last_seen_at: string | null
   is_online: boolean
   cpu_usage: number
+  cpu_count: number
   mem_usage: number
   disk_usage: number
   alert_enabled: boolean
@@ -69,7 +70,7 @@ export interface HostMetric {
 }
 
 export interface LatestMetric {
-  id: number; host_id: number; cpu_percent: number
+  id: number; host_id: number; cpu_percent: number; cpu_count: number
   mem_total_mb: number; mem_used_mb: number; mem_percent: number
   disk_total_gb: number; disk_used_gb: number; disk_percent: number
   load_1m: number; load_5m: number; load_15m: number

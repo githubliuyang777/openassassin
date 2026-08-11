@@ -54,6 +54,7 @@ class HostResponse(BaseModel):
     last_seen_at: datetime | None = None
     is_online: bool = False
     cpu_usage: float = 0.0
+    cpu_count: int = 0
     mem_usage: float = 0.0
     disk_usage: float = 0.0
     alert_enabled: bool = True

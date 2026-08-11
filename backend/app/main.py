@@ -78,6 +78,13 @@ def _migrate_hosts_table():
     _migrate("hosts", [
         ("description", "VARCHAR(512) DEFAULT ''"),
         ("updated_at", "DATETIME"),
+        ("cpu_count", "INTEGER DEFAULT 0"),
+    ])
+
+
+def _migrate_host_metrics_table():
+    _migrate("host_metrics", [
+        ("cpu_count", "INTEGER DEFAULT 0"),
     ])
 
 
@@ -324,6 +331,7 @@ async def lifespan(app: FastAPI):
     _migrate_domains_table()
     _migrate_domain_whois_table()
     _migrate_hosts_table()
+    _migrate_host_metrics_table()
     _migrate_audit_logs_table()
     _migrate_subscriptions_table()
     _migrate_site_monitors_table()

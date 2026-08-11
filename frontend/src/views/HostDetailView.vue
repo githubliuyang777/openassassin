@@ -21,6 +21,9 @@
             <n-progress type="circle" :percentage="cpuPercent" :color="cpuColor" :height="60" />
             <n-text strong style="font-size:18px">{{ cpuPercent }}%</n-text>
           </div>
+          <n-text depth="3" style="font-size:11px;margin-top:4px" v-if="host">
+            {{ latest?.cpu_percent ?? host.cpu_usage ?? 0 }}% / 100% · {{ host.cpu_count || '-' }} 核
+          </n-text>
         </n-card>
       </n-grid-item>
       <n-grid-item>

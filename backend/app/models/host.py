@@ -20,6 +20,7 @@ class Host(Base):
     last_seen_at = Column(DateTime, nullable=True)
     is_online = Column(Boolean, default=False)
     cpu_usage = Column(Float, default=0.0)
+    cpu_count = Column(Integer, default=0)
     mem_usage = Column(Float, default=0.0)
     disk_usage = Column(Float, default=0.0)
     alert_enabled = Column(Boolean, default=True)
