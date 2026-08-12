@@ -171,9 +171,13 @@ def cleanup_old_metrics(db: Session) -> None:
 
 
 def process_events(db: Session, host_id: int, events: list[AgentEventItem]) -> None:
-    """Process and store system events reported by agent."""
+    """Process and store system events reported by agent, trigger alerts for critical events."""
     if not events:
         return
+
+    host = db.query(Host).filter(Host.id == host_id).first()
+    host_name = host.name if host else f"host-{host_id}"
+
     for evt in events:
         # Parse timestamp
         from datetime import datetime
@@ -199,6 +203,82 @@ def process_events(db: Session, host_id: int, events: list[AgentEventItem]) -> N
             logger.warning("CRITICAL event on host %d: [%s] %s", host_id, evt.category, evt.title)
 
     db.commit()
+
+    # Alert notifications
+    _check_and_notify_events(db, host_id, host_name, host, events)
+
+
+def _check_and_notify_events(db: Session, host_id: int, host_name: str, host, events: list[AgentEventItem]) -> None:
+    """Check events and send notifications for critical/warning conditions."""
+    from app.services.notification_service import send_group_notification
+    from app.config import settings
+
+    notification_group_id = host.notification_group_id if host else None
+    fallback_email = settings.alert_email
+
+    for evt in events:
+        should_notify = False
+        subject = ""
+        body = ""
+
+        # 1. OOM Kill — immediate critical alert
+        if evt.category == "oom" and evt.severity == "critical":
+            should_notify = True
+            subject = f"[openAssassin] OOM Kill 告警: {host_name}"
+            body = (
+                f"主机 {host_name} 发生 OOM Kill 事件\n\n"
+                f"事件: {evt.title}\n"
+                f"详情: {evt.detail}\n"
+                f"时间: {evt.timestamp}\n\n"
+                f"请及时检查主机内存使用情况。"
+            )
+
+        # 2. Container OOM — immediate critical alert
+        elif evt.category == "container" and evt.labels.get("action") == "oom":
+            should_notify = True
+            container = evt.labels.get("container", "unknown")
+            subject = f"[openAssassin] 容器 OOM 告警: {host_name}"
+            body = (
+                f"主机 {host_name} 上容器发生 OOM\n\n"
+                f"容器: {container}\n"
+                f"镜像: {evt.labels.get('image', 'unknown')}\n"
+                f"时间: {evt.timestamp}\n\n"
+                f"请检查容器内存限制配置。"
+            )
+
+        # 3. Container die with non-zero exit code — check for repeated failures
+        elif evt.category == "container" and evt.labels.get("action") == "die":
+            exit_code = evt.labels.get("exit_code", "0")
+            if exit_code != "0":
+                container = evt.labels.get("container", "unknown")
+                # Count recent die events for this container in last 5 minutes
+                recent_count = (
+                    db.query(HostEvent)
+                    .filter(
+                        HostEvent.host_id == host_id,
+                        HostEvent.category == "container",
+                        HostEvent.created_at >= china_now() - timedelta(minutes=5),
+                    )
+                    .count()
+                )
+                if recent_count >= 3:
+                    should_notify = True
+                    subject = f"[openAssassin] 容器反复退出告警: {host_name}"
+                    body = (
+                        f"主机 {host_name} 上容器频繁退出\n\n"
+                        f"容器: {container}\n"
+                        f"退出码: {exit_code}\n"
+                        f"近 5 分钟事件数: {recent_count}\n"
+                        f"时间: {evt.timestamp}\n\n"
+                        f"请检查容器日志排查原因。"
+                    )
+
+        if should_notify:
+            try:
+                send_group_notification(db, notification_group_id, fallback_email, subject, body)
+                logger.info("Event alert sent for host %d: %s", host_id, subject)
+            except Exception as e:
+                logger.error("Failed to send event alert for host %d: %s", host_id, e)
 
 
 def get_host_events(db: Session, host_id: int, hours: int = 24,
