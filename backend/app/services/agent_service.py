@@ -66,6 +66,57 @@ def process_report(db: Session, host_id: int, data: AgentReportRequest) -> None:
     db.add(metric)
     db.commit()
 
+    # Check usage thresholds and send alerts
+    if host:
+        _check_usage_alerts(db, host, data)
+
+
+def _check_usage_alerts(db: Session, host, data: AgentReportRequest) -> None:
+    """Check CPU/mem/disk usage against thresholds and send alerts if exceeded."""
+    from app.services.notification_service import send_group_notification
+    from app.config import settings
+
+    if not host.alert_enabled:
+        return
+
+    # Dedup: skip if already alerted within 24 hours
+    now = china_now()
+    if host.last_alerted_at and host.last_alerted_at > now - timedelta(hours=24):
+        return
+
+    alerts = []
+
+    if data.cpu_percent >= settings.host_agent_alert_cpu_percent:
+        alerts.append(f"CPU 使用率 {data.cpu_percent}%（阈值 {settings.host_agent_alert_cpu_percent}%）")
+
+    if data.mem_percent >= settings.host_agent_alert_mem_percent:
+        alerts.append(f"内存使用率 {data.mem_percent}%（阈值 {settings.host_agent_alert_mem_percent}%）")
+
+    if data.disk_percent >= settings.host_agent_alert_disk_percent:
+        alerts.append(f"磁盘使用率 {data.disk_percent}%（阈值 {settings.host_agent_alert_disk_percent}%）")
+
+    if not alerts:
+        return
+
+    subject = f"[openAssassin] 主机资源告警: {host.name}"
+    body = (
+        f"主机 {host.name}（{host.hostname}）资源使用率超过阈值\n\n"
+        + "\n".join(f"- {a}" for a in alerts)
+        + f"\n\n当前状态: CPU {data.cpu_percent}% | 内存 {data.mem_percent}% | 磁盘 {data.disk_percent}%"
+        + f"\n上报时间: {now.strftime('%Y-%m-%d %H:%M:%S')}"
+        + "\n\n请及时检查主机资源使用情况。"
+    )
+
+    try:
+        send_group_notification(
+            db, host.notification_group_id, settings.alert_email, subject, body,
+        )
+        host.last_alerted_at = now
+        db.commit()
+        logger.info("Usage alert sent for host %d: %s", host.id, ", ".join(alerts))
+    except Exception as e:
+        logger.error("Failed to send usage alert for host %d: %s", host.id, e)
+
 
 def get_all_host_status(db: Session) -> list[dict]:
     hosts = db.query(Host).order_by(Host.updated_at.desc()).all()
