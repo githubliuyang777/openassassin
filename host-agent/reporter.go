@@ -133,3 +133,41 @@ func (r *Reporter) drainBuffer() {
 		r.buf = r.buf[1:]
 	}
 }
+
+// EventsPayload is the request body for POST /api/v1/agents/events
+type EventsPayload struct {
+	Events []*SystemEvent `json:"events"`
+}
+
+// ReportEvents sends collected system events to the server
+func (r *Reporter) ReportEvents(events []*SystemEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
+	payload := &EventsPayload{Events: events}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal events: %w", err)
+	}
+
+	url := r.serverURL + "/api/v1/agents/events"
+	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+r.token)
+
+	resp, err := r.client.Do(req)
+	if err != nil {
+		log.Printf("WARN: report events failed: %v", err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		log.Printf("WARN: report events returned HTTP %d", resp.StatusCode)
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	return nil
+}

@@ -25,6 +25,20 @@ class AgentReportResponse(BaseModel):
     ok: bool = True
 
 
+class AgentEventItem(BaseModel):
+    timestamp: str = ""
+    category: str = ""
+    severity: str = "info"
+    source: str = ""
+    title: str = ""
+    detail: str = ""
+    labels: dict = {}
+
+
+class AgentEventsRequest(BaseModel):
+    events: list[AgentEventItem] = []
+
+
 class HostStatusSummary(BaseModel):
     id: int
     name: str

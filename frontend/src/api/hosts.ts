@@ -78,6 +78,18 @@ export interface LatestMetric {
   process_count: number; uptime_seconds: number; collected_at: string | null
 }
 
+export interface HostEvent {
+  id: number
+  host_id: number
+  category: string
+  severity: string
+  source: string
+  title: string
+  detail: string
+  labels: string
+  created_at: string | null
+}
+
 export function fetchHosts() { return api.get<Host[]>('/hosts') }
 export function fetchHost(id: number) { return api.get<Host>(`/hosts/${id}`) }
 export function createHost(data: HostCreate) { return api.post<Host>('/hosts', data) }
@@ -88,3 +100,9 @@ export function fetchHostMetrics(id: number, hours = 24) { return api.get<{ item
 export function fetchLatestMetrics(id: number) { return api.get<LatestMetric>(`/hosts/${id}/metrics/latest`) }
 export function fetchAgentToken(id: number) { return api.get<{ agent_token: string }>(`/hosts/${id}/agent-token`) }
 export function regenerateAgentToken(id: number) { return api.post<{ agent_token: string }>(`/hosts/${id}/regenerate-token`) }
+export function fetchHostEvents(id: number, hours = 24, severity?: string, category?: string) {
+  const params: Record<string, string | number> = { hours }
+  if (severity) params.severity = severity
+  if (category) params.category = category
+  return api.get<{ items: HostEvent[] }>(`/hosts/${id}/events`, { params })
+}

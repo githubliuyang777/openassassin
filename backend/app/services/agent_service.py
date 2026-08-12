@@ -1,3 +1,4 @@
+import json
 import logging
 import secrets
 from datetime import timedelta
@@ -8,7 +9,8 @@ from app.config import settings
 from app.database import china_now
 from app.models.host import Host
 from app.models.host_metric import HostMetric
-from app.schemas.agent import AgentReportRequest
+from app.models.host_event import HostEvent
+from app.schemas.agent import AgentReportRequest, AgentEventItem
 
 logger = logging.getLogger(__name__)
 
@@ -165,4 +167,72 @@ def cleanup_old_metrics(db: Session) -> None:
     db.commit()
     if deleted:
         logger.info("Cleaned up %d old host metrics (retention=%d days)",
+                    deleted, settings.host_agent_metrics_retention_days)
+
+
+def process_events(db: Session, host_id: int, events: list[AgentEventItem]) -> None:
+    """Process and store system events reported by agent."""
+    if not events:
+        return
+    for evt in events:
+        # Parse timestamp
+        from datetime import datetime
+        try:
+            ts = datetime.fromisoformat(evt.timestamp.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            ts = china_now()
+
+        record = HostEvent(
+            host_id=host_id,
+            category=evt.category,
+            severity=evt.severity,
+            source=evt.source,
+            title=evt.title[:256] if evt.title else "",
+            detail=evt.detail,
+            labels=json.dumps(evt.labels, ensure_ascii=False) if evt.labels else "{}",
+            created_at=ts,
+        )
+        db.add(record)
+
+        # Log critical events
+        if evt.severity == "critical":
+            logger.warning("CRITICAL event on host %d: [%s] %s", host_id, evt.category, evt.title)
+
+    db.commit()
+
+
+def get_host_events(db: Session, host_id: int, hours: int = 24,
+                    severity: str | None = None, category: str | None = None) -> list[dict]:
+    """Get host events with optional filtering."""
+    start = china_now() - timedelta(hours=hours)
+    query = db.query(HostEvent).filter(
+        HostEvent.host_id == host_id,
+        HostEvent.created_at >= start,
+    )
+    if severity:
+        query = query.filter(HostEvent.severity == severity)
+    if category:
+        query = query.filter(HostEvent.category == category)
+
+    rows = query.order_by(HostEvent.created_at.desc()).limit(200).all()
+    return [{
+        "id": r.id, "host_id": r.host_id,
+        "category": r.category, "severity": r.severity,
+        "source": r.source, "title": r.title,
+        "detail": r.detail, "labels": r.labels,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    } for r in rows]
+
+
+def cleanup_old_events(db: Session) -> None:
+    """Delete host events older than retention period."""
+    threshold = china_now() - timedelta(days=settings.host_agent_metrics_retention_days)
+    deleted = (
+        db.query(HostEvent)
+        .filter(HostEvent.created_at < threshold)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    if deleted:
+        logger.info("Cleaned up %d old host events (retention=%d days)",
                     deleted, settings.host_agent_metrics_retention_days)

@@ -11,6 +11,9 @@ from app.database import engine, Base, SessionLocal
 from app.services.auth_service import get_or_create_admin
 from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors, notification_groups, notification_recipients, dingtalk, agents
 
+# Ensure all models are imported for create_all
+from app.models import host_event  # noqa: F401
+
 
 def _migrate(table: str, columns: list[tuple[str, str]]):
     """Add new columns to an existing table if missing (SQLite)."""
@@ -315,12 +318,12 @@ async def _site_monitor_check_loop():
 
 
 async def _host_agent_check_loop():
-    """Background task: detect offline hosts and clean up old metrics."""
+    """Background task: detect offline hosts and clean up old metrics/events."""
     _last_cleanup_date = ""
     while True:
         await asyncio.sleep(60)
         try:
-            from app.services.agent_service import check_offline_hosts, cleanup_old_metrics
+            from app.services.agent_service import check_offline_hosts, cleanup_old_metrics, cleanup_old_events
             from datetime import datetime, timezone
             db = SessionLocal()
             try:
@@ -328,6 +331,7 @@ async def _host_agent_check_loop():
                 today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
                 if _last_cleanup_date != today:
                     await asyncio.to_thread(cleanup_old_metrics, db)
+                    await asyncio.to_thread(cleanup_old_events, db)
                     _last_cleanup_date = today
             finally:
                 db.close()

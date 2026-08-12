@@ -117,6 +117,20 @@
       <div v-else ref="chartEl" style="width:100%;height:240px"></div>
     </n-card>
 
+    <!-- System Events -->
+    <n-card size="small" title="系统事件" style="margin-bottom:16px">
+      <template #header-extra>
+        <n-space size="small">
+          <n-select v-model:value="eventSeverityFilter" :options="severityOptions" placeholder="级别" clearable size="tiny" style="width:90px" />
+          <n-select v-model:value="eventCategoryFilter" :options="categoryOptions" placeholder="类别" clearable size="tiny" style="width:90px" />
+        </n-space>
+      </template>
+      <div v-if="events.length === 0" style="text-align:center;padding:24px;color:#999">
+        暂无系统事件
+      </div>
+      <n-data-table v-else :columns="eventColumns" :data="events" :bordered="false" size="small" :max-height="300" />
+    </n-card>
+
     <!-- Agent Info + Alert Config -->
     <n-grid :cols="2" :x-gap="16">
       <n-grid-item>
@@ -161,11 +175,11 @@ import { useRoute } from 'vue-router'
 import {
   NButton, NIcon, NText, NTag, NSpace, NCard, NGrid, NGridItem,
   NProgress, NRadioGroup, NRadioButton, NDescriptions, NDescriptionsItem,
-  NForm, NFormItem, NSwitch, NSelect, useMessage, useDialog,
+  NForm, NFormItem, NSwitch, NSelect, NDataTable, useMessage, useDialog,
 } from 'naive-ui'
 import { ArrowBackOutline } from '@vicons/ionicons5'
-import { fetchHost, fetchHostMetrics, fetchLatestMetrics, regenerateAgentToken, fetchAgentToken, updateHost } from '@/api/hosts'
-import type { Host, HostMetric, LatestMetric } from '@/api/hosts'
+import { fetchHost, fetchHostMetrics, fetchLatestMetrics, fetchHostEvents, regenerateAgentToken, fetchAgentToken, updateHost } from '@/api/hosts'
+import type { Host, HostMetric, LatestMetric, HostEvent } from '@/api/hosts'
 import { fetchGroups } from '@/api/notification-groups'
 
 const route = useRoute()
@@ -181,6 +195,10 @@ const chartHours = ref(24)
 const alertEnabled = ref(true)
 const notificationGroupId = ref<number | null>(null)
 const groupOptions = ref<{ label: string; value: number }[]>([])
+
+const events = ref<HostEvent[]>([])
+const eventSeverityFilter = ref<string | null>(null)
+const eventCategoryFilter = ref<string | null>(null)
 
 const chartEl = ref<HTMLDivElement | null>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -341,6 +359,57 @@ async function loadGroups() {
   } catch (_e) {}
 }
 
+async function loadEvents() {
+  try {
+    const resp = await fetchHostEvents(hostId.value, 24, eventSeverityFilter.value || undefined, eventCategoryFilter.value || undefined)
+    events.value = resp.data.items || []
+  } catch (_e) {}
+}
+
+watch([eventSeverityFilter, eventCategoryFilter], () => loadEvents())
+
+const severityOptions = [
+  { label: 'Critical', value: 'critical' },
+  { label: 'Warning', value: 'warning' },
+  { label: 'Info', value: 'info' },
+]
+const categoryOptions = [
+  { label: 'OOM', value: 'oom' },
+  { label: 'Container', value: 'container' },
+]
+
+function severityType(s: string) {
+  if (s === 'critical') return 'error'
+  if (s === 'warning') return 'warning'
+  return 'info'
+}
+
+const eventColumns = [
+  {
+    title: '时间',
+    key: 'created_at',
+    width: 140,
+    render: (row: HostEvent) => h('span', { style: 'font-size:12px' }, relativeTime(row.created_at)),
+  },
+  {
+    title: '级别',
+    key: 'severity',
+    width: 80,
+    render: (row: HostEvent) => h(NTag, { type: severityType(row.severity), size: 'tiny', round: true }, () => row.severity),
+  },
+  {
+    title: '类别',
+    key: 'category',
+    width: 80,
+    render: (row: HostEvent) => h(NTag, { size: 'tiny' }, () => row.category),
+  },
+  {
+    title: '事件',
+    key: 'title',
+    ellipsis: { tooltip: true },
+  },
+]
+
 watch(chartHours, () => loadAll())
 
 async function saveAlertConfig() {
@@ -382,6 +451,6 @@ async function handleCopyInstallCmd() {
   } catch (e: any) { message.error(e.message || '获取 Token 失败') }
 }
 
-onMounted(() => { loadAll(); loadGroups(); pollTimer = setInterval(loadAll, 30000) })
+onMounted(() => { loadAll(); loadGroups(); loadEvents(); pollTimer = setInterval(() => { loadAll(); loadEvents() }, 30000) })
 onUnmounted(() => { if (pollTimer) { clearInterval(pollTimer); pollTimer = null } })
 </script>
