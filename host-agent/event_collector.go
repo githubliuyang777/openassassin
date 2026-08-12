@@ -46,7 +46,7 @@ func NewEventCollector() *EventCollector {
 		recentTitles: make(map[string]time.Time),
 	}
 	// Check Docker availability
-	cli, err := client.NewClientWithOpts(client.FromAPIVersionNegotiation, client.WithAPIVersionNegotiation())
+	cli, err := client.NewClientWithOpts(client.WithAPIVersionNegotiation())
 	if err == nil {
 		_, err = cli.Ping(context.Background())
 		if err == nil {
@@ -99,7 +99,7 @@ func (ec *EventCollector) listenDockerEvents(ctx context.Context) {
 		default:
 		}
 
-		cli, err := client.NewClientWithOpts(client.FromAPIVersionNegotiation, client.WithAPIVersionNegotiation())
+		cli, err := client.NewClientWithOpts(client.WithAPIVersionNegotiation())
 		if err != nil {
 			log.Printf("WARN: docker client error: %v, retrying in 30s", err)
 			time.Sleep(30 * time.Second)
@@ -156,9 +156,10 @@ func (ec *EventCollector) handleDockerEventStream(
 func (ec *EventCollector) processDockerEvent(msg events.Message) {
 	containerName := msg.Actor.Attributes["name"]
 	exitCode := msg.Actor.Attributes["exitCode"]
+	action := string(msg.Action)
 
 	var severity, title string
-	switch msg.Action {
+	switch action {
 	case "oom":
 		severity = "critical"
 		title = "Container OOM: " + containerName
@@ -176,7 +177,7 @@ func (ec *EventCollector) processDockerEvent(msg events.Message) {
 	}
 
 	detail := "Container: " + containerName +
-		"\nAction: " + msg.Action +
+		"\nAction: " + action +
 		"\nImage: " + msg.Actor.Attributes["image"] +
 		"\nExit Code: " + exitCode
 
@@ -189,7 +190,7 @@ func (ec *EventCollector) processDockerEvent(msg events.Message) {
 		Detail:    detail,
 		Labels: map[string]string{
 			"container": containerName,
-			"action":    msg.Action,
+			"action":    action,
 			"exit_code": exitCode,
 			"image":     msg.Actor.Attributes["image"],
 		},
