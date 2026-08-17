@@ -1,5 +1,5 @@
 <template>
-  <n-config-provider :theme-overrides="themeOverrides" :locale="zhCN" :date-locale="dateZhCN">
+  <n-config-provider :theme-overrides="themeStore.naiveOverrides" :theme="naiveTheme" :locale="zhCN" :date-locale="dateZhCN">
     <n-loading-bar-provider>
       <n-message-provider>
         <n-dialog-provider>
@@ -11,19 +11,16 @@
 </template>
 
 <script setup lang="ts">
-import { zhCN, dateZhCN } from 'naive-ui'
+import { computed } from 'vue'
+import { zhCN, dateZhCN, darkTheme } from 'naive-ui'
 import {
   NConfigProvider,
   NLoadingBarProvider,
   NMessageProvider,
   NDialogProvider,
 } from 'naive-ui'
+import { useThemeStore } from '@/stores/theme'
 
-const themeOverrides = {
-  common: {
-    primaryColor: '#2080f0',
-    primaryColorHover: '#4098fc',
-    primaryColorPressed: '#1060c9',
-  },
-}
+const themeStore = useThemeStore()
+const naiveTheme = computed(() => themeStore.isDark ? darkTheme : undefined)
 </script>
