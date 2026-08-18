@@ -54,6 +54,28 @@ def delete_monitor(db: Session, monitor: SiteMonitor) -> None:
     db.commit()
 
 
+def batch_toggle_alert(db: Session, ids: list[int], enabled: bool) -> int:
+    """Batch enable/disable alert for multiple monitors. Returns count of updated rows."""
+    count = (
+        db.query(SiteMonitor)
+        .filter(SiteMonitor.id.in_(ids))
+        .update({"alert_enabled": enabled}, synchronize_session=False)
+    )
+    db.commit()
+    return count
+
+
+def batch_set_notification_group(db: Session, ids: list[int], group_id: int | None) -> int:
+    """Batch set notification group for multiple monitors. Returns count of updated rows."""
+    count = (
+        db.query(SiteMonitor)
+        .filter(SiteMonitor.id.in_(ids))
+        .update({"notification_group_id": group_id}, synchronize_session=False)
+    )
+    db.commit()
+    return count
+
+
 def get_check_history(db: Session, monitor_id: int, page: int = 1, page_size: int = 20) -> dict:
     rows = (
         db.query(SiteCheckResult)

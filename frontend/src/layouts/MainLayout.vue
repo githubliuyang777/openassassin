@@ -4,6 +4,11 @@
       <img src="/logo.svg" alt="openAssassin" style="height: 28px" />
       <n-text strong style="font-size: 17px">openAssassin</n-text>
       <n-space style="margin-left: auto" align="center">
+        <n-dropdown trigger="click" :options="themeOptions" @select="themeStore.setTheme">
+          <n-button text :title="'主题: ' + themeStore.themeConfig.label">
+            {{ themeStore.themeConfig.icon }}
+          </n-button>
+        </n-dropdown>
         <n-dropdown trigger="click" :options="userMenuOptions" @select="handleUserMenu">
           <n-button text>
             {{ user?.username }}
@@ -53,6 +58,7 @@
 import { computed, h, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
 import {
   NLayout, NLayoutHeader, NLayoutSider, NLayoutContent,
   NMenu, NIcon, NText, NButton, NSpace, NDropdown, NModal, NForm, NFormItem, NInput, useMessage,
@@ -80,7 +86,13 @@ import type { AlertItem } from '@/api/alerts'
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
+const themeStore = useThemeStore()
 const message = useMessage()
+
+const themeOptions = themeStore.themeList.map(t => ({
+  label: `${t.icon} ${t.label}`,
+  key: t.name,
+}))
 
 const user = computed(() => auth.user)
 const showPasswordModal = ref(false)

@@ -4,28 +4,27 @@ import { api } from '@/api/client'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('token') || '')
-  const user = ref<{ id: number; username: string; role: string; email: string } | null>(null)
+  const user = ref<any>(null)
   const mfaToken = ref('')
 
   const isLoggedIn = computed(() => !!token.value)
-  const mfaRequired = computed(() => !!mfaToken.value)
 
   async function login(username: string, password: string) {
     const res = await api.post('/auth/login', { username, password })
-    if (res.data.mfa_required) {
-      mfaToken.value = res.data.mfa_token
+    const data = res.data as any
+    if (data.mfa_token) {
+      mfaToken.value = data.mfa_token
       return { mfa_required: true }
     }
-    token.value = res.data.access_token
+    token.value = data.access_token
     localStorage.setItem('token', token.value)
     await fetchMe()
     return { mfa_required: false }
   }
 
   async function verifyMfa(totpCode: string) {
-    const res = await api.post('/auth/mfa/verify', {
-      mfa_token: mfaToken.value,
-      totp_code: totpCode,
+    const res = await api.post('/auth/mfa/verify', { totp_code: totpCode }, {
+      headers: { Authorization: `Bearer ${mfaToken.value}` },
     })
     token.value = res.data.access_token
     localStorage.setItem('token', token.value)
@@ -33,10 +32,9 @@ export const useAuthStore = defineStore('auth', () => {
     await fetchMe()
   }
 
-  async function verifyRecoveryCode(code: string) {
-    const res = await api.post('/auth/mfa/recovery', {
-      mfa_token: mfaToken.value,
-      recovery_code: code,
+  async function verifyRecoveryCode(recoveryCode: string) {
+    const res = await api.post('/auth/mfa/recovery', { recovery_code: recoveryCode }, {
+      headers: { Authorization: `Bearer ${mfaToken.value}` },
     })
     token.value = res.data.access_token
     localStorage.setItem('token', token.value)
@@ -44,9 +42,17 @@ export const useAuthStore = defineStore('auth', () => {
     await fetchMe()
   }
 
-  async function fetchMfaStatus() {
-    const res = await api.get('/auth/mfa/status')
-    return res.data as { totp_enabled: boolean; backup_codes_remaining: number }
+  async function logout() {
+    try { await api.post('/auth/logout') } catch (_e) {}
+    token.value = ''
+    user.value = null
+    mfaToken.value = ''
+    localStorage.removeItem('token')
+  }
+
+  async function changePassword(oldPassword: string, newPassword: string) {
+    await api.put('/auth/password', { old_password: oldPassword, new_password: newPassword })
+    await logout()
   }
 
   async function initMfaSetup() {
@@ -71,32 +77,21 @@ export const useAuthStore = defineStore('auth', () => {
     await api.post('/auth/mfa/disable', { password })
   }
 
+  async function fetchMfaStatus() {
+    const res = await api.get('/auth/mfa/status')
+    return res.data as { totp_enabled: boolean; backup_codes_remaining: number }
+  }
+
   async function fetchMe() {
     if (!token.value) return
     const res = await api.get('/auth/me')
     user.value = res.data
   }
 
-  async function logout() {
-    try {
-      await api.post('/auth/logout')
-    } catch (_e) { /* ignore network errors */ }
-    token.value = ''
-    user.value = null
-    mfaToken.value = ''
-    localStorage.removeItem('token')
-  }
-
-  async function changePassword(oldPassword: string, newPassword: string) {
-    await api.put('/auth/password', { old_password: oldPassword, new_password: newPassword })
-    logout()
-  }
-
   return {
-    token, user, mfaToken, isLoggedIn, mfaRequired,
-    login, verifyMfa, verifyRecoveryCode,
-    fetchMfaStatus, initMfaSetup, verifyMfaSetupEmail,
-    confirmMfaSetup, disableMfa,
-    fetchMe, logout, changePassword,
+    token, user, isLoggedIn,
+    login, verifyMfa, verifyRecoveryCode, logout, changePassword,
+    initMfaSetup, verifyMfaSetupEmail, confirmMfaSetup, disableMfa,
+    fetchMfaStatus, fetchMe,
   }
 })

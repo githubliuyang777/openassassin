@@ -25,7 +25,44 @@
       />
     </n-space>
 
-    <n-data-table :columns="columns" :data="monitors" :loading="loading" :row-key="(r: SiteMonitor) => r.id" />
+    <!-- Batch action bar -->
+    <n-space v-if="checkedRowKeys.length > 0" style="margin-bottom: 12px; padding: 8px 12px; background: #f0f7ff; border-radius: 4px" align="center">
+      <n-text>已选 <strong>{{ checkedRowKeys.length }}</strong> 项</n-text>
+      <n-divider vertical />
+      <n-button size="small" type="success" @click="handleBatchAlert(true)">批量开启告警</n-button>
+      <n-button size="small" type="warning" @click="handleBatchAlert(false)">批量关闭告警</n-button>
+      <n-divider vertical />
+      <n-button size="small" @click="showBatchGroup = true">批量设置通知组</n-button>
+      <n-button size="small" quaternary @click="checkedRowKeys = []">取消选择</n-button>
+    </n-space>
+
+    <n-data-table
+      v-model:checked-row-keys="checkedRowKeys"
+      :columns="columns"
+      :data="monitors"
+      :loading="loading"
+      :row-key="(r: SiteMonitor) => r.id"
+    />
+
+    <!-- Batch notification group modal -->
+    <n-modal v-model:show="showBatchGroup" preset="card" title="批量设置通知组" style="width: 400px">
+      <n-form label-placement="top">
+        <n-form-item label="通知组">
+          <n-select
+            v-model:value="batchGroupId"
+            :options="notifGroupOptions"
+            placeholder="选择通知组（留空清除）"
+            clearable
+          />
+        </n-form-item>
+      </n-form>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showBatchGroup = false">取消</n-button>
+          <n-button type="primary" :loading="batchSaving" @click="handleBatchSetGroup">确认</n-button>
+        </n-space>
+      </template>
+    </n-modal>
 
     <!-- Create/Edit Modal -->
     <n-modal v-model:show="showForm" preset="card" :title="editingId ? '编辑监控' : '新建监控'" style="width: 560px">
@@ -163,10 +200,11 @@
 
 <script setup lang="ts">
 import { h, ref, computed, onMounted } from 'vue'
-import { useMessage, useDialog, NTag, NButton, NIcon, NText, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NSwitch, NH3, NGrid, NGridItem, NDrawer, NDrawerContent, NTable, NPagination, NDropdown, NRadioGroup, NRadioButton } from 'naive-ui'
+import { useMessage, useDialog, NTag, NButton, NIcon, NText, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NSwitch, NH3, NGrid, NGridItem, NDrawer, NDrawerContent, NTable, NPagination, NDropdown, NRadioGroup, NRadioButton, NDivider } from 'naive-ui'
 import { AddOutline, PulseOutline, DownloadOutline, GridOutline, MailOutline, NotificationsOutline } from '@vicons/ionicons5'
 import {
   fetchSiteMonitors, createSiteMonitor, updateSiteMonitor, deleteSiteMonitor, checkNow, fetchHistory, exportSla, fetchHeatmap, fetchMonitorGroups,
+  batchToggleAlert, batchSetNotificationGroup,
 } from '@/api/site-monitors'
 import { fetchGroups } from '@/api/notification-groups'
 import type { NotificationGroup } from '@/api/notification-groups'
@@ -181,6 +219,10 @@ const saving = ref(false)
 const showForm = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref()
+const checkedRowKeys = ref<number[]>([])
+const showBatchGroup = ref(false)
+const batchGroupId = ref<number | null>(null)
+const batchSaving = ref(false)
 const form = ref<SiteMonitorCreate>({
   name: '', target: '', monitor_type: 'http', http_method: 'GET',
   expected_status_codes: '200', timeout: 10, retries: 2, check_interval: 300, alert_enabled: true,
@@ -387,6 +429,7 @@ function fmtTime(val: string | null) {
 }
 
 const columns = [
+  { type: 'selection' as const },
   { title: '名称', key: 'name', width: 140, ellipsis: { tooltip: true } },
   {
     title: '分组', key: 'group_name', width: 90,
@@ -425,6 +468,34 @@ const columns = [
     ]),
   },
 ]
+
+// Batch operations
+async function handleBatchAlert(enabled: boolean) {
+  try {
+    await batchToggleAlert(checkedRowKeys.value, enabled)
+    message.success(`已${enabled ? '开启' : '关闭'} ${checkedRowKeys.value.length} 项告警`)
+    checkedRowKeys.value = []
+    await loadMonitors()
+  } catch (e: any) {
+    message.error(e.message || '操作失败')
+  }
+}
+
+async function handleBatchSetGroup() {
+  batchSaving.value = true
+  try {
+    await batchSetNotificationGroup(checkedRowKeys.value, batchGroupId.value)
+    message.success(`已更新 ${checkedRowKeys.value.length} 项通知组`)
+    checkedRowKeys.value = []
+    showBatchGroup.value = false
+    batchGroupId.value = null
+    await loadMonitors()
+  } catch (e: any) {
+    message.error(e.message || '操作失败')
+  } finally {
+    batchSaving.value = false
+  }
+}
 
 onMounted(loadMonitors)
 </script>

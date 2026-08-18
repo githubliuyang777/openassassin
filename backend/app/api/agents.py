@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.middleware.agent_auth import get_current_agent
-from app.schemas.agent import AgentReportRequest, AgentReportResponse, HostStatusSummary
+from app.schemas.agent import AgentReportRequest, AgentReportResponse, AgentEventsRequest, HostStatusSummary
 from app.services import agent_service
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -17,6 +17,16 @@ def report(
     db: Session = Depends(get_db),
 ):
     agent_service.process_report(db, host_id, data)
+    return AgentReportResponse(ok=True)
+
+
+@router.post("/events", response_model=AgentReportResponse)
+def report_events(
+    data: AgentEventsRequest,
+    host_id: int = Depends(get_current_agent),
+    db: Session = Depends(get_db),
+):
+    agent_service.process_events(db, host_id, data.events)
     return AgentReportResponse(ok=True)
 
 

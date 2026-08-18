@@ -125,6 +125,22 @@ def get_latest_metric(host_id: int, db: Session = Depends(get_db), _user: dict =
     return metric
 
 
+@router.get("/{host_id}/events")
+def get_host_events(
+    host_id: int,
+    hours: int = Query(24, ge=1, le=168),
+    severity: str | None = Query(None),
+    category: str | None = Query(None),
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    host = host_service.get_host(db, host_id)
+    if not host:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="主机不存在")
+    from app.services import agent_service
+    return {"items": agent_service.get_host_events(db, host_id, hours, severity, category)}
+
+
 @router.websocket("/{host_id}/terminal")
 @router.post("/import", response_model=HostResponse, status_code=status.HTTP_201_CREATED)
 def import_ec2_host(data: HostImportRequest, db: Session = Depends(get_db), _user: dict = Depends(get_current_user)):

@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     host_agent_alert_cpu_percent: float = 90.0
     host_agent_alert_mem_percent: float = 90.0
     host_agent_alert_disk_percent: float = 85.0
+    host_agent_alert_consecutive: int = 3
 
     @property
     def cors_origin_list(self) -> list[str]:

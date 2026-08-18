@@ -4,6 +4,7 @@ from pydantic import BaseModel
 class AgentReportRequest(BaseModel):
     hostname: str = ""
     cpu_percent: float = 0.0
+    cpu_count: int = 0
     mem_percent: float = 0.0
     mem_total_mb: float = 0.0
     mem_used_mb: float = 0.0
@@ -22,6 +23,20 @@ class AgentReportRequest(BaseModel):
 
 class AgentReportResponse(BaseModel):
     ok: bool = True
+
+
+class AgentEventItem(BaseModel):
+    timestamp: str = ""
+    category: str = ""
+    severity: str = "info"
+    source: str = ""
+    title: str = ""
+    detail: str = ""
+    labels: dict = {}
+
+
+class AgentEventsRequest(BaseModel):
+    events: list[AgentEventItem] = []
 
 
 class HostStatusSummary(BaseModel):

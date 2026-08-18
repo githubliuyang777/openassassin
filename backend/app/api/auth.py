@@ -33,9 +33,39 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/login", response_model=TokenResponse | MfaRequiredResponse)
 def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    from app.models.user import User as UserModel
+
     user = auth_service.authenticate(db, body.username, body.password)
     if not user:
+        # Track failed login attempt
+        target_user = db.query(UserModel).filter(UserModel.username == body.username).first()
+        if target_user:
+            target_user.login_failed_attempts = (target_user.login_failed_attempts or 0) + 1
+            target_user.login_failed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            db.commit()
+
+            # Send alert after 3 consecutive failures for admin
+            if (target_user.username == "admin"
+                    and target_user.login_failed_attempts >= 3
+                    and not target_user.login_alert_sent):
+                _send_login_alert(
+                    db=db,
+                    username=target_user.username,
+                    attempts=target_user.login_failed_attempts,
+                    ip_address=_get_client_ip(request),
+                    user_agent=request.headers.get("User-Agent", ""),
+                )
+                target_user.login_alert_sent = 1
+                db.commit()
+
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
+
+    # Successful login — reset failed attempts
+    if user.login_failed_attempts:
+        user.login_failed_attempts = 0
+        user.login_failed_at = None
+        user.login_alert_sent = 0
+        db.commit()
 
     try:
         from app.services.audit_service import create_log
@@ -53,6 +83,41 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
 
     token = auth_service.create_token(user.id, user.username, user.role)
     return TokenResponse(access_token=token)
+
+
+def _send_login_alert(db: Session, username: str, attempts: int, ip_address: str, user_agent: str) -> None:
+    """Send email alert for consecutive failed login attempts."""
+    from app.services.email_service import send_email, EmailNotConfiguredError
+
+    admin_email = settings.admin_email
+    if not admin_email:
+        return
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
+    subject = f"⚠️ openAssassin 安全告警：{username} 账号登录异常"
+    body = f"""openAssassin 安全告警
+
+账号 {username} 在短时间内连续 {attempts} 次登录失败，请关注是否存在暴力破解风险。
+
+详细信息：
+  - 用户名：{username}
+  - 失败次数：{attempts} 次
+  - 客户端 IP：{ip_address}
+  - User-Agent：{user_agent}
+  - 时间：{now} (UTC)
+
+建议操作：
+  1. 确认是否为本人操作
+  2. 如非本人操作，建议立即修改密码
+  3. 检查是否需要启用双因素认证 (TOTP)
+
+--
+openAssassin 运维平台
+"""
+    try:
+        send_email(admin_email, subject, body)
+    except (EmailNotConfiguredError, Exception):
+        pass
 
 
 @router.post("/logout")

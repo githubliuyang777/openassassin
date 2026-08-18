@@ -63,12 +63,10 @@ class MfaRequiredResponse(BaseModel):
 
 
 class MfaVerifyRequest(BaseModel):
-    mfa_token: str
     totp_code: str = Field(min_length=6, max_length=6)
 
 
 class MfaRecoveryRequest(BaseModel):
-    mfa_token: str
     recovery_code: str
 
 
