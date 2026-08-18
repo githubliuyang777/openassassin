@@ -369,11 +369,8 @@ app.include_router(site_monitors.router, prefix="/api/v1")
 app.include_router(notification_groups.router, prefix="/api/v1")
 app.include_router(notification_recipients.router, prefix="/api/v1")
 app.include_router(dingtalk.router, prefix="/api/v1")
-<<<<<<< Updated upstream
-=======
 app.include_router(agents.router, prefix="/api/v1")
 app.include_router(overview.router, prefix="/api/v1")
->>>>>>> Stashed changes
 
 
 @app.get("/api/health")
