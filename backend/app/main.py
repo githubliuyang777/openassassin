@@ -9,7 +9,7 @@ from app.middleware.audit_middleware import AuditMiddleware
 from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.services.auth_service import get_or_create_admin
-from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors, notification_groups, notification_recipients, dingtalk, agents, overview, overview
+from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors, notification_groups, notification_recipients, dingtalk, agents, overview
 
 
 def _migrate(table: str, columns: list[tuple[str, str]]):
@@ -371,7 +371,10 @@ app.include_router(notification_recipients.router, prefix="/api/v1")
 app.include_router(dingtalk.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")
 app.include_router(overview.router, prefix="/api/v1")
+<<<<<<< HEAD
+=======
 app.include_router(overview.router, prefix="/api/v1")
+>>>>>>> origin/master
 
 
 @app.get("/api/health")
