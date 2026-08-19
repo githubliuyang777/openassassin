@@ -9,10 +9,7 @@ from app.middleware.audit_middleware import AuditMiddleware
 from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.services.auth_service import get_or_create_admin
-from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors, notification_groups, notification_recipients, dingtalk, agents
-
-# Ensure all models are imported for create_all
-from app.models import host_event  # noqa: F401
+from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors, notification_groups, notification_recipients, dingtalk, agents, overview
 
 
 def _migrate(table: str, columns: list[tuple[str, str]]):
@@ -39,9 +36,6 @@ def _migrate_users_table():
         ("totp_failed_at", "DATETIME"),
         ("backup_codes", "TEXT"),
         ("backup_codes_used", "INTEGER DEFAULT 0"),
-        ("login_failed_attempts", "INTEGER DEFAULT 0"),
-        ("login_failed_at", "DATETIME"),
-        ("login_alert_sent", "INTEGER DEFAULT 0"),
     ])
 
 
@@ -80,30 +74,7 @@ def _migrate_audit_logs_table():
 def _migrate_hosts_table():
     _migrate("hosts", [
         ("description", "VARCHAR(512) DEFAULT ''"),
-        ("created_at", "DATETIME"),
         ("updated_at", "DATETIME"),
-        ("aws_instance_id", "VARCHAR(32)"),
-        ("aws_region", "VARCHAR(32)"),
-        ("aws_credential_id", "INTEGER"),
-        ("agent_token", "VARCHAR(64)"),
-        ("agent_version", "VARCHAR(16) DEFAULT ''"),
-        ("last_seen_at", "DATETIME"),
-        ("is_online", "BOOLEAN DEFAULT 0"),
-        ("cpu_usage", "FLOAT DEFAULT 0.0"),
-        ("cpu_count", "INTEGER DEFAULT 0"),
-        ("mem_usage", "FLOAT DEFAULT 0.0"),
-        ("disk_usage", "FLOAT DEFAULT 0.0"),
-        ("alert_enabled", "BOOLEAN DEFAULT 1"),
-        ("notification_group_id", "INTEGER"),
-        ("last_alerted_at", "DATETIME"),
-        ("alert_active", "BOOLEAN DEFAULT 0"),
-        ("consecutive_alerts", "INTEGER DEFAULT 0"),
-    ])
-
-
-def _migrate_host_metrics_table():
-    _migrate("host_metrics", [
-        ("cpu_count", "INTEGER DEFAULT 0"),
     ])
 
 
@@ -320,12 +291,12 @@ async def _site_monitor_check_loop():
 
 
 async def _host_agent_check_loop():
-    """Background task: detect offline hosts and clean up old metrics/events."""
+    """Background task: detect offline hosts and clean up old metrics."""
     _last_cleanup_date = ""
     while True:
         await asyncio.sleep(60)
         try:
-            from app.services.agent_service import check_offline_hosts, cleanup_old_metrics, cleanup_old_events
+            from app.services.agent_service import check_offline_hosts, cleanup_old_metrics
             from datetime import datetime, timezone
             db = SessionLocal()
             try:
@@ -333,7 +304,6 @@ async def _host_agent_check_loop():
                 today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
                 if _last_cleanup_date != today:
                     await asyncio.to_thread(cleanup_old_metrics, db)
-                    await asyncio.to_thread(cleanup_old_events, db)
                     _last_cleanup_date = today
             finally:
                 db.close()
@@ -351,7 +321,6 @@ async def lifespan(app: FastAPI):
     _migrate_domains_table()
     _migrate_domain_whois_table()
     _migrate_hosts_table()
-    _migrate_host_metrics_table()
     _migrate_audit_logs_table()
     _migrate_subscriptions_table()
     _migrate_site_monitors_table()
@@ -401,6 +370,7 @@ app.include_router(notification_groups.router, prefix="/api/v1")
 app.include_router(notification_recipients.router, prefix="/api/v1")
 app.include_router(dingtalk.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")
+app.include_router(overview.router, prefix="/api/v1")
 
 
 @app.get("/api/health")
