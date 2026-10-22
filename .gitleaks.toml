@@ -1,0 +1,21 @@
+[extend]
+useDefault = true
+
+# Test fixtures and documentation intentionally contain fake/placeholder secrets.
+[allowlist]
+paths = [
+  '''backend/tests/''',
+  '''\.env\.example''',
+  '''tests/''',
+  '''docker-compose.*\.yml''',
+  '''README\.md''',
+]
+regexes = [
+  '''change-me-in-production''',
+  '''change-me-to-a-random-string''',
+  '''change-me-master-key-32-bytes''',
+  '''ci-test-secret''',
+  '''ci-master-key''',
+  '''test-jwt-secret''',
+  '''test-master-key''',
+]

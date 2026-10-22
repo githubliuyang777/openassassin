@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 # 使用阿里云 Alpine 镜像源加速
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
@@ -9,7 +9,7 @@ RUN npm ci --registry=https://registry.npmmirror.com
 COPY . .
 RUN npm run build
 
-FROM nginx:alpine
+FROM nginx:1.28-alpine
 # 使用阿里云 Alpine 镜像源加速
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 

@@ -1,7 +1,9 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    app_env: str = "development"
     database_url: str = "sqlite:///./data/ops.db"
     jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
@@ -10,6 +12,7 @@ class Settings(BaseSettings):
     admin_default_password: str = "admin"
     cors_origins: str = "http://localhost:5173,http://localhost:8080"
     admin_email: str = ""
+    sandbox_enabled: bool = True
     sandbox_image_shell: str = "alpine:3.20"
     sandbox_image_python: str = "python:3.12-alpine"
     sandbox_memory_limit: str = "256m"
@@ -56,6 +59,15 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @model_validator(mode="after")
+    def _reject_default_production_secrets(self):
+        if self.app_env.lower() == "production":
+            if self.jwt_secret == "change-me-in-production":
+                raise ValueError("JWT_SECRET must be set when APP_ENV=production")
+            if self.master_key == "change-me-master-key-32-bytes!!":
+                raise ValueError("MASTER_KEY must be set when APP_ENV=production")
+        return self
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

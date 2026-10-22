@@ -82,6 +82,12 @@ def execute_script_endpoint(
     if not s:
         raise HTTPException(status_code=404, detail="脚本不存在")
 
+    if not settings.sandbox_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="沙箱执行在当前部署中未启用",
+        )
+
     credential_values = {}
     if body.credential_ids:
         creds = db.query(Credential).filter(Credential.id.in_(body.credential_ids)).all()

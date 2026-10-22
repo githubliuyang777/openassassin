@@ -2,6 +2,8 @@ import os
 import time
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 os.environ["JWT_SECRET"] = "test-jwt-secret-key-32-chars!!"
 os.environ["MASTER_KEY"] = "test-master-key-needs-32-byte!"
@@ -9,6 +11,38 @@ os.environ["MASTER_KEY"] = "test-master-key-needs-32-byte!"
 from app.services.auth_service import hash_password, verify_password, create_token, decode_token, authenticate
 from app.services.credential_service import encrypt, decrypt
 from app.services.sandbox_service import _mask_secrets
+
+
+class TestSettings:
+    def test_production_rejects_default_jwt_secret(self):
+        from app.config import Settings
+
+        with pytest.raises(ValueError):
+            Settings(
+                app_env="production",
+                jwt_secret="change-me-in-production",
+                master_key="x" * 32,
+            )
+
+    def test_production_rejects_default_master_key(self):
+        from app.config import Settings
+
+        with pytest.raises(ValueError):
+            Settings(
+                app_env="production",
+                jwt_secret="x" * 32,
+                master_key="change-me-master-key-32-bytes!!",
+            )
+
+    def test_production_accepts_strong_secrets(self):
+        from app.config import Settings
+
+        settings = Settings(
+            app_env="production",
+            jwt_secret="a" * 32,
+            master_key="b" * 32,
+        )
+        assert settings.app_env == "production"
 
 
 class TestAuthService:
@@ -92,3 +126,19 @@ class TestSandboxServiceMocks:
             assert result["status"] == "failed"
             assert result["exit_code"] == -1
             assert "Docker not available" in result["log"]
+
+    def test_execute_disabled_returns_failed_without_docker(self, monkeypatch):
+        from app.config import settings
+        from app.services.sandbox_service import execute_script
+
+        monkeypatch.setattr(settings, "sandbox_enabled", False)
+        result = execute_script(
+            script_type="shell",
+            content="echo test",
+            timeout=5,
+            env_vars={},
+            credential_values={},
+        )
+        assert result["status"] == "failed"
+        assert result["exit_code"] == -1
+        assert "[SANDBOX_DISABLED]" in result["log"]

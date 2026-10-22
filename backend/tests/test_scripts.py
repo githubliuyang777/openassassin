@@ -102,3 +102,19 @@ class TestScriptsCRUD:
         data = resp.json()
         assert data["total"] == 5
         assert len(data["items"]) == 3
+
+
+class TestScriptExecutionSandboxDisabled:
+    def test_execute_disabled_returns_503_without_execution(self, client, auth_headers, db_session, monkeypatch):
+        from app.config import settings
+        from app.models.execution import Execution
+
+        created = client.post("/api/v1/scripts", json=SCRIPT_PAYLOAD, headers=auth_headers)
+        script_id = created.json()["id"]
+
+        monkeypatch.setattr(settings, "sandbox_enabled", False)
+        resp = client.post(f"/api/v1/scripts/{script_id}/execute", json={}, headers=auth_headers)
+
+        assert resp.status_code == 503
+        assert "未启用" in resp.json()["detail"]
+        assert db_session.query(Execution).count() == 0

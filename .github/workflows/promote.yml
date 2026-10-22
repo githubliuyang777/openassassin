@@ -1,0 +1,164 @@
+name: Promote to Production
+
+on:
+  workflow_run:
+    workflows: ["CD"]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to promote (sha-<40 hex>). Leave empty to use the current master commit."
+        required: false
+      reason:
+        description: "Promotion or rollback reason"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promote-prod
+  cancel-in-progress: false
+
+env:
+  DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_REPO }}
+  GITOPS_REPOSITORY: githubliuyang777/openassassin-gitops
+
+jobs:
+  promote:
+    if: >
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'master')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - name: Resolve image tag
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            TAG="sha-${{ github.event.workflow_run.head_sha }}"
+          else
+            TAG="${{ inputs.tag }}"
+            if [ -z "$TAG" ]; then
+              TAG="sha-${{ github.sha }}"
+            fi
+          fi
+          if ! echo "$TAG" | grep -Eq '^sha-[0-9a-f]{40}$'; then
+            echo "Invalid image tag: $TAG"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout GitOps repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.GITOPS_REPOSITORY }}
+          token: ${{ secrets.GITOPS_TOKEN }}
+          path: gitops
+          ref: ${{ vars.GITOPS_BRANCH || 'main' }}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Verify images exist
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          if [ -z "${DOCKERHUB_REPO}" ]; then
+            echo "DOCKERHUB_REPO secret is not set"
+            exit 1
+          fi
+          docker manifest inspect "${DOCKERHUB_REPO}-backend:${TAG}" >/dev/null
+          docker manifest inspect "${DOCKERHUB_REPO}-frontend:${TAG}" >/dev/null
+
+      - name: Verify tag was deployed to staging
+        if: github.event_name == 'workflow_run'
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          grep -q "newTag: ${TAG}" gitops/environments/staging/kustomization.yaml || {
+            echo "Tag ${TAG} is not currently deployed to staging"
+            exit 1
+          }
+
+      - name: Set up kustomize
+        uses: imranismail/setup-kustomize@v2
+        with:
+          kustomize-version: "5.6.0"
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | tar -xz -C /usr/local/bin
+
+      - name: Update prod image tag
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          DOCKERHUB_REPO: ${{ env.DOCKERHUB_REPO }}
+        run: |
+          cd gitops
+          ./scripts/set-image.sh prod "${TAG}"
+          ./scripts/validate.sh
+
+      - name: Commit and push prod overlay
+        working-directory: gitops
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add environments/prod
+          if git diff --cached --quiet; then
+            echo "No prod changes to commit"
+            exit 0
+          fi
+          git commit -m "chore(prod): promote ${TAG}" \
+            -m "Reason: ${REASON:-promotion after staging validation}"
+          git pull --rebase origin "$(git rev-parse --abbrev-ref HEAD)"
+          git push origin HEAD
+
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o /usr/local/bin/argocd \
+            https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x /usr/local/bin/argocd
+
+      - name: Sync production
+        env:
+          ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+          ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_AUTH_TOKEN }}
+        run: |
+          if [ -z "${ARGOCD_SERVER}" ] || [ -z "${ARGOCD_AUTH_TOKEN}" ]; then
+            echo "ARGOCD_SERVER / ARGOCD_AUTH_TOKEN secrets are not set"
+            exit 1
+          fi
+          argocd login "${ARGOCD_SERVER}" --auth-token "${ARGOCD_AUTH_TOKEN}" --grpc-web
+          argocd app sync openassassin-prod --timeout 600
+          argocd app wait openassassin-prod --sync --health --timeout 900
+
+      - name: Verify production health
+        run: |
+          if [ -z "${{ vars.PROD_URL }}" ]; then
+            echo "PROD_URL repository variable is not set"
+            exit 1
+          fi
+          curl -fsS "${{ vars.PROD_URL }}/api/health"
+
+      - name: Write summary
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          {
+            echo "## Production deployment"
+            echo ""
+            echo "- Image tag: \`${TAG}\`"
+            echo "- ArgoCD application: \`openassassin-prod\`"
+            echo "- Trigger: \`${{ github.event_name }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

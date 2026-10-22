@@ -21,6 +21,13 @@ def execute_script(
     env_vars: dict,
     credential_values: dict[str, str],
 ) -> dict:
+    if not settings.sandbox_enabled:
+        return {
+            "status": "failed",
+            "exit_code": -1,
+            "log": "[SANDBOX_DISABLED] 沙箱执行在当前部署中未启用",
+        }
+
     timeout = min(timeout or settings.sandbox_default_timeout, settings.sandbox_max_timeout)
     image = settings.sandbox_image_python if script_type == "python" else settings.sandbox_image_shell
     work_dir = "/workspace"
