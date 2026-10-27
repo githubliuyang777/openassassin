@@ -13,9 +13,11 @@ bearer_scheme = HTTPBearer()
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)) -> dict:
     try:
         payload = decode_token(credentials.credentials)
-    except JWTError:
+        if "scope" in payload:
+            raise JWTError("Scoped token is not valid for this endpoint")
+        return {"id": int(payload["sub"]), "username": payload["username"], "role": payload["role"]}
+    except (JWTError, KeyError, ValueError, TypeError):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    return {"id": int(payload["sub"]), "username": payload["username"], "role": payload["role"]}
 
 
 def get_current_admin_user(

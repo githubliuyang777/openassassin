@@ -1,7 +1,7 @@
 from app.config import settings
 from app.main import app
 from app.models.user import User
-from app.services.auth_service import create_token, hash_password
+from app.services.auth_service import create_mfa_token, create_token, hash_password
 
 VERSION_URL = "/api/v1/system/version"
 
@@ -36,6 +36,12 @@ class TestVersionEndpoint:
         token = create_token(user.id, user.username, user.role)
         resp = client.get(VERSION_URL, headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 403
+
+    def test_scoped_mfa_token_is_rejected(self, client, admin_user):
+        user, _ = admin_user
+        token = create_mfa_token(user["id"], user["username"])
+        resp = client.get(VERSION_URL, headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 401
 
     def test_deleted_user_is_denied(self, client):
         token = create_token(999999, "ghost", "admin")

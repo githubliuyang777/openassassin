@@ -74,7 +74,7 @@ openassassin/
 │   │   ├── api/                    # REST 路由
 │   │   ├── services/               # 业务逻辑 + 沙箱 + 加密 + 邮件
 │   │   └── middleware/             # JWT Bearer 鉴权
-│   ├── tests/                      # pytest 测试 (165 用例)
+│   ├── tests/                      # pytest 测试 (167 用例)
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
@@ -160,7 +160,7 @@ npm run test      # 运行测试
 ### 测试
 
 ```bash
-# 后端测试 (165 用例)
+# 后端测试 (167 用例)
 cd backend && pytest tests/ -v
 
 # 前端测试 (13 用例)

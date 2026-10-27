@@ -1,5 +1,7 @@
 import pytest
 
+from app.services.auth_service import create_mfa_token
+
 
 class TestAuthLogin:
     def test_login_ok(self, client, admin_user):
@@ -44,6 +46,12 @@ class TestAuthMe:
 
     def test_me_invalid_token(self, client):
         resp = client.get("/api/v1/auth/me", headers={"Authorization": "Bearer invalid"})
+        assert resp.status_code == 401
+
+    def test_me_rejects_scoped_mfa_token(self, client, admin_user):
+        user, _ = admin_user
+        token = create_mfa_token(user["id"], user["username"])
+        resp = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 401
 
 
