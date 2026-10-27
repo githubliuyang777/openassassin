@@ -8,6 +8,8 @@ os.environ["JWT_SECRET"] = "test-jwt-secret-key-32-chars!!"
 os.environ["MASTER_KEY"] = "test-master-key-needs-32-byte!"
 os.environ["SANDBOX_TMP_DIR"] = "/tmp/openassassin-sandbox-test"
 os.environ["LOG_DIR"] = "/tmp/ops-test-logs"
+os.environ["APP_VERSION"] = "test-version"
+os.environ["ENABLE_API_DOCS"] = "false"
 
 os.environ["AUDIT_ENABLED"] = "false"
 

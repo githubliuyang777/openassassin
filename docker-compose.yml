@@ -2,12 +2,16 @@ version: "3.9"
 
 services:
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
     container_name: ops-backend
     restart: unless-stopped
     environment:
       - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
       - MASTER_KEY=${MASTER_KEY:-change-me-master-key-32-bytes!!}
+      - ENABLE_API_DOCS=${ENABLE_API_DOCS:-false}
       - ADMIN_DEFAULT_PASSWORD=${ADMIN_DEFAULT_PASSWORD:-admin}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-}
       - DATABASE_URL=sqlite:///./data/ops.db
