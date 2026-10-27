@@ -10,6 +10,9 @@
         <n-form-item label="角色">
           <n-input :value="user?.role || ''" disabled />
         </n-form-item>
+        <n-form-item v-if="isAdmin" label="网站版本">
+          <n-input :value="versionLoading ? '加载中…' : (version || '—')" disabled />
+        </n-form-item>
       </n-form>
     </n-card>
 
@@ -61,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NButton, NCard, NForm, NFormItem, NInput, NH2, NSpace, NTag, NDescriptions,
@@ -69,6 +72,7 @@ import {
 } from 'naive-ui'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/api/client'
+import { fetchVersion } from '@/api/system'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -76,6 +80,9 @@ const message = useMessage()
 const user = ref(auth.user)
 const saving = ref(false)
 const formRef = ref()
+const isAdmin = computed(() => auth.user?.role === 'admin')
+const version = ref('')
+const versionLoading = ref(false)
 
 const totpEnabled = ref(false)
 const backupCodesRemaining = ref(0)
@@ -94,6 +101,16 @@ onMounted(async () => {
   await auth.fetchMe()
   user.value = auth.user
   form.value.email = auth.user?.email || ''
+  if (auth.user?.role === 'admin') {
+    versionLoading.value = true
+    try {
+      version.value = (await fetchVersion()).version
+    } catch (_e) {
+      version.value = ''
+    } finally {
+      versionLoading.value = false
+    }
+  }
   try {
     const status = await auth.fetchMfaStatus()
     totpEnabled.value = status.totp_enabled

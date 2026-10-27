@@ -1,7 +1,15 @@
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    app_version: str = Field(
+        default="dev",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._+-]*$",
+    )
+    enable_api_docs: bool = False
     database_url: str = "sqlite:///./data/ops.db"
     jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
@@ -52,6 +60,11 @@ class Settings(BaseSettings):
     host_agent_alert_mem_percent: float = 90.0
     host_agent_alert_disk_percent: float = 85.0
     host_agent_alert_consecutive: int = 3
+
+    @field_validator("app_version", mode="before")
+    @classmethod
+    def _strip_app_version(cls, value):
+        return value.strip() if isinstance(value, str) else value
 
     @property
     def cors_origin_list(self) -> list[str]:

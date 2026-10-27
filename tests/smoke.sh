@@ -68,11 +68,36 @@ if [ -n "$AUTH_HEADER" ]; then
   check "GET /api/v1/credentials — authenticated" 200 GET "$BASE/api/v1/credentials" "" "$AUTH_HEADER"
 fi
 
-# 6. Frontend
+# 6. Website version (admin only)
+if [ -n "$AUTH_HEADER" ]; then
+  check "GET /api/v1/system/version — authenticated admin" 200 GET "$BASE/api/v1/system/version" "" "$AUTH_HEADER"
+  APP_VERSION_VALUE=$(jq -r '.version // empty' /tmp/smoke_resp.txt 2>/dev/null || true)
+  if [ -n "$APP_VERSION_VALUE" ] && [ "$APP_VERSION_VALUE" != "null" ]; then
+    echo "  PASS website version is non-empty ($APP_VERSION_VALUE)"
+    PASS=$((PASS + 1))
+  else
+    echo "  FAIL website version is empty"
+    FAIL=$((FAIL + 1))
+  fi
+  if [ -n "${EXPECTED_APP_VERSION:-}" ]; then
+    if [ "$APP_VERSION_VALUE" = "$EXPECTED_APP_VERSION" ]; then
+      echo "  PASS website version matches EXPECTED_APP_VERSION"
+      PASS=$((PASS + 1))
+    else
+      echo "  FAIL website version — expected $EXPECTED_APP_VERSION, got $APP_VERSION_VALUE"
+      FAIL=$((FAIL + 1))
+    fi
+  fi
+fi
+
+# 7. Frontend
 check "Frontend :8080" 200 GET "$FRONTEND"
 
-# 7. Unauthenticated access
+# 8. Unauthenticated access
 check "GET /api/v1/scripts — unauthenticated" 403 GET "$BASE/api/v1/scripts"
+check "GET /api/v1/system/version — unauthenticated" 403 GET "$BASE/api/v1/system/version"
+check "GET /docs — disabled" 404 GET "$BASE/docs"
+check "GET /openapi.json — disabled" 404 GET "$BASE/openapi.json"
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
