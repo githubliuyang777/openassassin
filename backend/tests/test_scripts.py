@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 
 SCRIPT_PAYLOAD = {
@@ -102,3 +104,28 @@ class TestScriptsCRUD:
         data = resp.json()
         assert data["total"] == 5
         assert len(data["items"]) == 3
+
+
+class TestScriptExecuteSandboxDisabled:
+    def test_execute_records_failed_when_sandbox_disabled(self, client, auth_headers, monkeypatch):
+        from app.config import settings
+
+        monkeypatch.setattr(settings, "sandbox_enabled", False)
+        created = client.post("/api/v1/scripts", json=SCRIPT_PAYLOAD, headers=auth_headers)
+        sid = created.json()["id"]
+
+        with patch("app.services.sandbox_service.docker.from_env") as mock_docker:
+            resp = client.post(f"/api/v1/scripts/{sid}/execute", json={}, headers=auth_headers)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "failed"
+        assert body["exit_code"] == -1
+        assert "[SANDBOX_DISABLED]" in body["log"]
+        mock_docker.assert_not_called()
+
+        history = client.get(f"/api/v1/executions?script_id={sid}", headers=auth_headers)
+        assert history.status_code == 200
+        items = history.json()["items"]
+        assert len(items) == 1
+        assert items[0]["status"] == "failed"

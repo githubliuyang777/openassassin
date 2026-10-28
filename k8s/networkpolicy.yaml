@@ -1,0 +1,27 @@
+# 可选网络策略：默认未加入 kustomization.yaml，生产环境按需启用。
+#
+# 启用前请确认：
+# 1. 集群 CNI 支持 NetworkPolicy；
+# 2. kubelet 探针流量不会被阻断（部分 CNI 需要额外放行节点网段）；
+# 3. 如有其他组件需要访问 backend:8000，需追加 ingress 规则。
+#
+# 启用方式：将该文件加入 kustomization.yaml 的 resources 后重新 apply。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-allow-frontend
+  namespace: openassassin
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: frontend
+      ports:
+        - protocol: TCP
+          port: 8000

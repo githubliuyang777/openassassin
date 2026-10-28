@@ -7,3 +7,5 @@ dist/
 .vite/
 *.egg-info/
 test.db
+k8s/secret.yaml
+k8s/secrets.env

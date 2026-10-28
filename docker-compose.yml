@@ -15,6 +15,7 @@ services:
       - ADMIN_DEFAULT_PASSWORD=${ADMIN_DEFAULT_PASSWORD:-admin}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-}
       - DATABASE_URL=sqlite:///./data/ops.db
+      - SANDBOX_ENABLED=${SANDBOX_ENABLED:-true}
       - SANDBOX_IMAGE_SHELL=${SANDBOX_IMAGE_SHELL:-alpine:3.20}
       - SANDBOX_IMAGE_PYTHON=${SANDBOX_IMAGE_PYTHON:-python:3.12-alpine}
       - ALERT_EMAIL=${ALERT_EMAIL:-}

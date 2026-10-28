@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openassassin
+  labels:
+    # 当前镜像默认以 root 运行（前端 nginx 需要绑定 80 端口并降权 worker），
+    # 因此 enforce 使用 baseline；后续镜像非 root 化后可收紧到 restricted。
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

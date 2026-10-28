@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     admin_default_password: str = "admin"
     cors_origins: str = "http://localhost:5173,http://localhost:8080"
     admin_email: str = ""
+    sandbox_enabled: bool = True
     sandbox_image_shell: str = "alpine:3.20"
     sandbox_image_python: str = "python:3.12-alpine"
     sandbox_memory_limit: str = "256m"

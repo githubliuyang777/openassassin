@@ -23,6 +23,27 @@ open http://localhost:8080
 
 > 首次登录后建议立即修改密码。如忘记密码，可使用登录页的「忘记密码」功能（需配置 SMTP）。
 
+## Kubernetes 部署
+
+仓库提供 Kustomize 清单（`k8s/`），适用于已安装 ingress-nginx 且存在默认 StorageClass 的集群：
+
+```bash
+# 1. 创建 Namespace 与 Secret（MASTER_KEY 必须永久保存）
+kubectl apply -f k8s/namespace.yaml
+kubectl -n openassassin create secret generic openassassin-secrets \
+  --from-literal=JWT_SECRET="$(openssl rand -hex 32)" \
+  --from-literal=MASTER_KEY="$(openssl rand -hex 32)" \
+  --from-literal=ADMIN_DEFAULT_PASSWORD='<强密码>' \
+  --from-literal=SMTP_PASSWORD=''
+
+# 2. 修改 k8s/ingress.yaml 中的域名后部署
+kubectl apply -k k8s
+```
+
+- SQLite 要求后端单副本（`Recreate`），数据保存在 PVC `openassassin-data`。
+- K8s 环境默认通过 `SANDBOX_ENABLED=false` 关闭脚本沙箱执行，执行脚本会返回 `[SANDBOX_DISABLED]`，其余功能正常。
+- 详细步骤、升级、备份与排障见 [k8s/README.md](k8s/README.md)。
+
 ## 界面预览
 
 ![openAssassin 仪表盘](assets/screenshot.png)
@@ -58,7 +79,7 @@ open http://localhost:8080
 | 加密 | AES-256-GCM (cryptography) | — |
 | 认证 | JWT (python-jose + bcrypt) + TOTP (pyotp) | — |
 | 沙箱 | Docker SDK for Python | — |
-| 部署 | Docker Compose | — |
+| 部署 | Docker Compose / Kubernetes (Kustomize) | — |
 
 ## 目录结构
 
@@ -74,7 +95,7 @@ openassassin/
 │   │   ├── api/                    # REST 路由
 │   │   ├── services/               # 业务逻辑 + 沙箱 + 加密 + 邮件
 │   │   └── middleware/             # JWT Bearer 鉴权
-│   ├── tests/                      # pytest 测试 (167 用例)
+│   ├── tests/                      # pytest 测试 (174 用例)
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
@@ -87,6 +108,7 @@ openassassin/
 │   └── package.json
 ├── tests/
 │   └── smoke.sh                    # curl 冒烟测试
+├── k8s/                             # Kustomize 清单 (Namespace/Deployment/Service/Ingress)
 ├── deploy.sh                        # 一键构建部署脚本
 ├── docker-compose.yml
 └── .github/workflows/ci.yml        # CI 门禁
@@ -102,6 +124,7 @@ openassassin/
 | `MASTER_KEY` | `change-me-master-key-32-bytes!!` | AES 加密主密钥 (≥32 字节) |
 | `ADMIN_DEFAULT_PASSWORD` | `admin` | 初次启动时创建的 admin 密码 |
 | `DATABASE_URL` | `sqlite:///./data/ops.db` | 数据库连接 |
+| `SANDBOX_ENABLED` | `true` | 是否启用 Docker 沙箱执行；无 Docker socket 的环境（如 K8s）设为 `false` |
 | `SANDBOX_IMAGE_SHELL` | `alpine:3.20` | Shell 沙箱镜像 |
 | `SANDBOX_IMAGE_PYTHON` | `python:3.12-alpine` | Python 沙箱镜像 |
 | `SANDBOX_MEMORY_LIMIT` | `256m` | 沙箱内存限制 |
@@ -160,7 +183,7 @@ npm run test      # 运行测试
 ### 测试
 
 ```bash
-# 后端测试 (167 用例)
+# 后端测试 (174 用例)
 cd backend && pytest tests/ -v
 
 # 前端测试 (13 用例)
