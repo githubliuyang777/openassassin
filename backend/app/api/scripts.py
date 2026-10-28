@@ -83,7 +83,9 @@ def execute_script_endpoint(
         raise HTTPException(status_code=404, detail="脚本不存在")
 
     credential_values = {}
-    if body.credential_ids:
+    # 沙箱关闭时无需解密凭据，避免无意义的密钥出内存，
+    # 也避免历史凭据损坏时把 [SANDBOX_DISABLED] 变成 500。
+    if settings.sandbox_enabled and body.credential_ids:
         creds = db.query(Credential).filter(Credential.id.in_(body.credential_ids)).all()
         for c in creds:
             credential_values[c.key] = credential_service.decrypt(c.encrypted_value)

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openassassin-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # 不指定 storageClassName，使用集群默认 StorageClass。
+  # 若集群没有默认 SC，请取消注释并填写实际名称：
+  # storageClassName: standard
+  #
+  # 必须使用块存储（local-path / EBS / Azure Disk / Ceph RBD 等）。
+  # SQLite WAL 依赖 POSIX 锁与共享内存，NFS/EFS/CephFS 等网络文件系统
+  # 可能导致 database is locked 或数据损坏。

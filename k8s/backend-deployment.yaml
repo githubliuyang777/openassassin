@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app: backend
+spec:
+  # SQLite 单写者 + 进程内定时任务，必须保持单副本。
+  replicas: 1
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: openassassin/openassassin-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            # 只读根文件系统下为 Python/第三方库提供可写 HOME
+            - name: HOME
+              value: /tmp
+            # 逐键引用（optional: false）：任一必需键缺失时 Pod 启动失败。
+            # 仅用 secretRef 无法校验键是否存在，缺失时会回落到代码里的默认密钥。
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: openassassin-secrets
+                  key: JWT_SECRET
+                  optional: false
+            - name: MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openassassin-secrets
+                  key: MASTER_KEY
+                  optional: false
+            - name: ADMIN_DEFAULT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: openassassin-secrets
+                  key: ADMIN_DEFAULT_PASSWORD
+                  optional: false
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: openassassin-secrets
+                  key: SMTP_PASSWORD
+                  optional: false
+          envFrom:
+            - configMapRef:
+                name: openassassin-config
+          volumeMounts:
+            # SQLite（含 -wal/-shm）与执行日志统一持久化
+            - name: data
+              mountPath: /app/data
+            - name: tmp
+              mountPath: /tmp
+          startupProbe:
+            # 启动时包含建表/ALTER TABLE 迁移，最多等待 5 分钟
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            # 已发布镜像默认 root；收紧 capability 并禁止提权。
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: openassassin-data
+        - name: tmp
+          emptyDir: {}

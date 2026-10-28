@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: openassassin
+
+resources:
+  - namespace.yaml
+  - pvc.yaml
+  - backend-deployment.yaml
+  - backend-service.yaml
+  - frontend-deployment.yaml
+  - frontend-service.yaml
+  - ingress.yaml
+  # 可选网络策略：确认 CNI/探针兼容后再启用
+  # - networkpolicy.yaml
+
+# 非敏感配置生成带 hash 后缀的 ConfigMap，配置变更会自动触发 Pod 重建。
+# Secret 不纳入 Kustomize：由集群内手工或 Sealed Secrets / External Secrets 创建，
+# 避免 kubectl apply -k 覆盖真实密钥。
+configMapGenerator:
+  - name: openassassin-config
+    envs:
+      - config.env
+
+images:
+  - name: openassassin/openassassin-backend
+    newTag: latest
+  - name: openassassin/openassassin-frontend
+    newTag: latest
+
+# 注意：
+# 1. 不要添加 namePrefix / nameSuffix：前端 nginx.conf 硬编码了
+#    http://backend:8000，重命名 Service 会导致 502。
+# 2. 不要使用 labels 转换器：它要求 kustomize v5+（kubectl 1.27+），
+#    保留基础字段以兼容更早的 kubectl。

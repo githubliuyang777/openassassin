@@ -257,7 +257,7 @@ async def _audit_cleanup_loop():
             from app.services.audit_service import cleanup_old_logs
             db = SessionLocal()
             try:
-                cleanup_old_logs(db)
+                await asyncio.to_thread(cleanup_old_logs, db)
             finally:
                 db.close()
         except Exception:
@@ -272,7 +272,7 @@ async def _alert_check_loop():
             from app.services.alert_service import check_and_alert
             db = SessionLocal()
             try:
-                check_and_alert(db)
+                await asyncio.to_thread(check_and_alert, db)
             finally:
                 db.close()
         except Exception:
@@ -285,7 +285,7 @@ async def _site_monitor_check_loop():
         await asyncio.sleep(30)
         try:
             from app.services.site_monitor_service import check_all_monitors
-            check_all_monitors()
+            await asyncio.to_thread(check_all_monitors)
         except Exception:
             pass
 
