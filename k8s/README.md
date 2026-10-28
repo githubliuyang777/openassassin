@@ -13,9 +13,9 @@ Internet
 ## 前置条件
 
 - Kubernetes 1.25+
-- `kubectl`（内置 kustomize，1.21+ 即可）
+- `kubectl` 1.22+（1.21 内置的 kustomize 对非 ASCII 注释有解析缺陷）
 - 集群已安装 ingress-nginx，并存在 `IngressClass/nginx`
-- 集群有默认 StorageClass（`kubectl get sc`）；没有则先安装或在 `pvc.yaml` 中显式指定
+- 集群有默认 StorageClass（`kubectl get sc`），且必须是块存储（NFS/EFS/CephFS 不适用于 SQLite WAL）；没有默认 SC 时在 `pvc.yaml` 中显式指定
 - 可访问 DockerHub（或自行替换镜像地址）
 
 ## 1. 镜像
@@ -27,6 +27,10 @@ Internet
 
 > **重要**：`SANDBOX_ENABLED` 开关是新增配置。请确认后端 `latest` 已包含该版本的代码
 > （合并 master 后由 CI 自动构建），否则旧镜像会忽略该变量，执行脚本仍会报 Docker 错误。
+
+> **生产环境请固定 tag**：CI 同时发布 `sha-<12位>` 标签。使用 `latest` 时，
+> `kubectl rollout undo` 会重新拉取同一个 `latest`，无法真正回滚；
+> 重新 apply 未变更的清单也不会触发镜像更新。请把 `newTag` 改为明确的版本或 `sha-*` 标签。
 
 要使用其他仓库或固定版本，修改 `kustomization.yaml` 的 `images`：
 
@@ -66,10 +70,13 @@ kubectl -n openassassin create secret generic openassassin-secrets \
 也可以用模板创建后自行填写（切勿提交填写后的文件）：
 
 ```bash
-cp k8s/secret.example.yaml k8s/secret.yaml
+cp k8s/examples/secret.example.yaml k8s/secret.yaml
 # 编辑 k8s/secret.yaml
 kubectl apply -f k8s/secret.yaml
 ```
+
+`kubectl apply -f k8s/` 不会递归读取 `examples/` 子目录，因此示例文件不会被误应用。
+Secret 必须先于 Deployment 存在，且四个键缺一不可（Deployment 使用逐键 `secretKeyRef`）。
 
 ## 3. 配置域名 / TLS
 
@@ -151,11 +158,15 @@ POD=$(kubectl -n openassassin get pod -l app=backend -o jsonpath='{.items[0].met
 kubectl -n openassassin exec "$POD" -- python -c \
   "import sqlite3; s=sqlite3.connect('/app/data/ops.db'); d=sqlite3.connect('/app/data/ops.db.bak'); s.backup(d); d.close(); s.close()"
 
-kubectl -n openassassin cp "$POD:/app/data/ops.db.bak" "./ops-$(date +%F).db"
+BACKUP_DIR="${HOME}/openassassin-backups"
+mkdir -p "$BACKUP_DIR"
+kubectl -n openassassin cp "$POD:/app/data/ops.db.bak" "$BACKUP_DIR/ops-$(date +%F).db"
 kubectl -n openassassin exec "$POD" -- rm -f /app/data/ops.db.bak
 ```
 
-如需完整备份（含执行日志），可对 PVC 做快照，或停机后复制 `/app/data` 整个目录。
+备份文件包含用户、加密凭据与审计日志，**不要放在仓库目录内**（`.gitignore` 已额外忽略
+`ops-*.db` 作为兜底）。如需完整备份（含执行日志），可对 PVC 做快照，或停机后复制
+`/app/data` 整个目录。
 
 ## 8. 与 Docker Compose 的差异
 
@@ -167,15 +178,27 @@ kubectl -n openassassin exec "$POD" -- rm -f /app/data/ops.db.bak
 | 入口 | `:8080` | Ingress → frontend:80 |
 | 密钥 | `.env` | Secret `openassassin-secrets` |
 
+> 沙箱禁用期间，每次点击执行仍会创建一条 `failed` 执行记录（日志含
+> `[SANDBOX_DISABLED]`），仪表盘成功率会因此下降。这是保持执行状态枚举兼容的取舍。
+
 ### 如何重新启用脚本执行
 
 K8s 清单**不挂载** `docker.sock`（安全风险高且托管集群通常不可用）。如需恢复脚本执行，
 需要满足以下任一条件后把 `config.env` 中的 `SANDBOX_ENABLED` 改为 `true`：
 
-1. 节点提供 Docker 运行时，并以 hostPath 挂载 `/var/run/docker.sock` 与
-   `/tmp/openassassin-sandbox`（需固定节点、放宽 Pod Security）；
-2. 在 Pod 中增加 privileged DinD sidecar 并设置 `DOCKER_HOST`；
+1. **DooD**：节点必须是 Docker 运行时，并以 hostPath **同路径**挂载
+   `/var/run/docker.sock` 与 `/tmp/openassassin-sandbox`。沙箱 daemon 在宿主侧解析
+   bind 源路径，两处路径必须一致；同时用 nodeSelector 固定节点。socket 权限等价于
+   节点 root，需接受该安全风险。
+2. **DinD sidecar**：需要 `privileged: true`，当前 Namespace 的 PSS `baseline` 会拒绝，
+   必须先放宽 Pod Security。backend 与 sidecar 需共享一个 emptyDir 并都挂载到
+   `/tmp/openassassin-sandbox`，并通过 `DOCKER_HOST` 指向 sidecar 的 Docker daemon。
 3. 将执行器改造为 Kubernetes Job/Pod 方案（需代码改动）。
+
+另需注意：前端镜像内 nginx 的 `proxy_read_timeout` 为 3600s，与
+`SANDBOX_MAX_TIMEOUT` 相同。重新启用前应重建前端镜像提高超时，或降低
+`SANDBOX_MAX_TIMEOUT`，为镜像拉取、容器启动和日志收集留出余量。
+长脚本在滚动升级/节点驱逐时仍可能被中断，建议在维护窗口操作。
 
 ## 9. 故障排查
 
@@ -190,7 +213,8 @@ kubectl -n openassassin get events --sort-by=.lastTimestamp
 | 现象 | 原因 / 处理 |
 |---|---|
 | PVC 一直 Pending | 集群无默认 StorageClass，或没有可用 PV；检查 `kubectl get sc,pv` |
-| Pod 报 `secret "openassassin-secrets" not found` | 未创建 Secret，按第 2 步创建 |
+| 日志出现 `database is locked` / 数据异常 | PVC 落在 NFS/EFS/CephFS 等网络存储；改用块存储 StorageClass |
+| Pod 报 `secret "openassassin-secrets" not found` 或 `couldn't find key ...` | 未创建 Secret 或缺键，按第 2 步创建四个键 |
 | backend CrashLoopBackOff，日志提示只读文件系统 | 确认 PVC 挂载在 `/app/data`；如仍失败，将 `readOnlyRootFilesystem` 改为 `false` |
 | frontend CrashLoopBackOff | 检查 `backend` Service 是否存在；或先将 frontend 的 `readOnlyRootFilesystem` 改为 `false` |
 | Ingress 404 | 检查域名是否已替换、`IngressClass/nginx` 是否存在 |

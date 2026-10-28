@@ -129,3 +129,29 @@ class TestScriptExecuteSandboxDisabled:
         items = history.json()["items"]
         assert len(items) == 1
         assert items[0]["status"] == "failed"
+
+    def test_execute_skips_credential_decryption_when_disabled(self, client, auth_headers, monkeypatch):
+        from app.config import settings
+
+        monkeypatch.setattr(settings, "sandbox_enabled", False)
+        cred = client.post(
+            "/api/v1/credentials",
+            json={"name": "k8s-cred", "key": "API_TOKEN", "value": "secret-value"},
+            headers=auth_headers,
+        )
+        assert cred.status_code == 201
+        cid = cred.json()["id"]
+        created = client.post("/api/v1/scripts", json=SCRIPT_PAYLOAD, headers=auth_headers)
+        sid = created.json()["id"]
+
+        with patch("app.api.scripts.credential_service.decrypt") as mock_decrypt:
+            resp = client.post(
+                f"/api/v1/scripts/{sid}/execute",
+                json={"credential_ids": [cid]},
+                headers=auth_headers,
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "failed"
+        assert "[SANDBOX_DISABLED]" in resp.json()["log"]
+        mock_decrypt.assert_not_called()

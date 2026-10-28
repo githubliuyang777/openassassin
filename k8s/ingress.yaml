@@ -7,7 +7,9 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
-    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    # 前端 nginx 的 /api/ 未设置 client_max_body_size（默认 1m），
+    # 这里保持一致，避免 Ingress 放行后仍被前端拒绝。
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
     # ingress-nginx 默认透传 X-Forwarded-For / X-Real-IP，满足审计 IP 来源
 spec:
   ingressClassName: nginx
@@ -15,7 +17,29 @@ spec:
     - host: openassassin.example.com   # 占位域名，部署前替换为实际域名
       http:
         paths:
-          # 前端 nginx 负责把 /api/ 反代到 backend:8000，因此这里只需指向 frontend
+          # 前端 nginx 负责把 /api/ 反代到 backend:8000，因此这里只需指向 frontend。
+          # 文档端点不在 /api/ 下，需单独指向 backend；ENABLE_API_DOCS=false 时返回 404。
+          - path: /docs
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+          - path: /redoc
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+          - path: /openapi.json
+            pathType: Exact
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
           - path: /
             pathType: Prefix
             backend:

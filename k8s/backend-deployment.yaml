@@ -20,7 +20,7 @@ spec:
     spec:
       automountServiceAccountToken: false
       enableServiceLinks: false
-      terminationGracePeriodSeconds: 30
+      terminationGracePeriodSeconds: 60
       securityContext:
         seccompProfile:
           type: RuntimeDefault
@@ -36,12 +36,35 @@ spec:
             # 只读根文件系统下为 Python/第三方库提供可写 HOME
             - name: HOME
               value: /tmp
+            # 逐键引用（optional: false）：任一必需键缺失时 Pod 启动失败。
+            # 仅用 secretRef 无法校验键是否存在，缺失时会回落到代码里的默认密钥。
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: openassassin-secrets
+                  key: JWT_SECRET
+                  optional: false
+            - name: MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openassassin-secrets
+                  key: MASTER_KEY
+                  optional: false
+            - name: ADMIN_DEFAULT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: openassassin-secrets
+                  key: ADMIN_DEFAULT_PASSWORD
+                  optional: false
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: openassassin-secrets
+                  key: SMTP_PASSWORD
+                  optional: false
           envFrom:
             - configMapRef:
                 name: openassassin-config
-            - secretRef:
-                name: openassassin-secrets
-                optional: false
           volumeMounts:
             # SQLite（含 -wal/-shm）与执行日志统一持久化
             - name: data
