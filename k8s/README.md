@@ -4,7 +4,7 @@
 
 ```
 Internet
-  └─ Ingress (ingress-nginx)
+  └─ Ingress (NGINX Ingress Controller)
        └─ Service frontend:80 ── Deployment frontend ×2 (nginx)
             └─ /api/ 反代 → Service backend:8000 ── Deployment backend ×1
                  └─ PVC openassassin-data → /app/data (SQLite + 日志)
@@ -14,7 +14,7 @@ Internet
 
 - Kubernetes 1.25+
 - `kubectl` 1.22+（1.21 内置的 kustomize 对非 ASCII 注释有解析缺陷）
-- 集群已安装 ingress-nginx，并存在 `IngressClass/nginx`
+- 集群已安装 NGINX Ingress Controller，并存在 `IngressClass/nginx`
 - 集群有默认 StorageClass（`kubectl get sc`），且必须是块存储（NFS/EFS/CephFS 不适用于 SQLite WAL）；没有默认 SC 时在 `pvc.yaml` 中显式指定
 - 可访问 DockerHub（或自行替换镜像地址）
 
@@ -80,8 +80,11 @@ Secret 必须先于 Deployment 存在，且四个键缺一不可（Deployment �
 
 ## 3. 配置域名 / TLS
 
-编辑 `k8s/ingress.yaml`，把 `openassassin.example.com` 替换为实际域名。
-未安装 ingress-nginx 时，可临时使用 port-forward 访问（见验证章节）。
+`k8s/ingress.yaml` 已配置域名 `openassassin.ly1996.xyz`；更换域名时同步修改并更新 DNS。
+未安装 NGINX Ingress Controller 时，可临时使用 port-forward 访问（见验证章节）。
+
+Ingress 注解使用 NGINX Ingress Controller 的 `nginx.org/*` 前缀，不要换回
+community ingress-nginx 的 `nginx.ingress.kubernetes.io/*`。
 
 TLS：先创建证书 Secret（或由 cert-manager 签发），再取消 `ingress.yaml` 中 `tls` 段注释。
 
@@ -99,7 +102,7 @@ kubectl -n openassassin get pods,svc,pvc,ingress
 ## 5. 验证
 
 ```bash
-HOST=openassassin.example.com
+HOST=openassassin.ly1996.xyz
 
 # 健康检查（经 Ingress → frontend nginx → backend）
 curl -sS -H "Host: $HOST" http://<ingress-ip>/api/health
@@ -217,7 +220,7 @@ kubectl -n openassassin get events --sort-by=.lastTimestamp
 | Pod 报 `secret "openassassin-secrets" not found` 或 `couldn't find key ...` | 未创建 Secret 或缺键，按第 2 步创建四个键 |
 | backend CrashLoopBackOff，日志提示只读文件系统 | 确认 PVC 挂载在 `/app/data`；如仍失败，将 `readOnlyRootFilesystem` 改为 `false` |
 | frontend CrashLoopBackOff | 检查 `backend` Service 是否存在；或先将 frontend 的 `readOnlyRootFilesystem` 改为 `false` |
-| Ingress 404 | 检查域名是否已替换、`IngressClass/nginx` 是否存在 |
+| Ingress 404 | 检查 DNS 是否指向入口、`IngressClass/nginx` 是否存在 |
 | 502 Bad Gateway | 后端未 Ready，或后端 Service 名被改动（必须叫 `backend`） |
 | 脚本执行提示 `[SANDBOX_DISABLED]` | 预期行为，见第 8 节 |
 | 升级后旧凭据无法解密 | `MASTER_KEY` 被更换，需恢复原 Secret |

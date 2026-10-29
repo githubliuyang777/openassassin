@@ -25,7 +25,7 @@ open http://localhost:8080
 
 ## Kubernetes 部署
 
-仓库提供 Kustomize 清单（`k8s/`），适用于已安装 ingress-nginx 且存在默认 StorageClass 的集群：
+仓库提供 Kustomize 清单（`k8s/`），适用于已安装 NGINX Ingress Controller（IngressClass `nginx`）且存在块存储 StorageClass 的集群：
 
 ```bash
 # 1. 创建 Namespace 与 Secret（MASTER_KEY 必须永久保存）
