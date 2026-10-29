@@ -4,17 +4,17 @@ metadata:
   name: openassassin
   annotations:
     # SSH WebSocket 终端与最长 3600s 的脚本执行，需要与前端 nginx 一致的超时
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-    nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
+    nginx.org/proxy-read-timeout: "3600s"
+    nginx.org/proxy-send-timeout: "3600s"
+    nginx.org/proxy-connect-timeout: "10s"
     # 前端 nginx 的 /api/ 未设置 client_max_body_size（默认 1m），
     # 这里保持一致，避免 Ingress 放行后仍被前端拒绝。
-    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
-    # ingress-nginx 默认透传 X-Forwarded-For / X-Real-IP，满足审计 IP 来源
+    nginx.org/client-max-body-size: "1m"
+    # NGINX Ingress Controller 默认透传 X-Forwarded-For / X-Real-IP，满足审计 IP 来源
 spec:
   ingressClassName: nginx
   rules:
-    - host: openassassin.example.com   # 占位域名，部署前替换为实际域名
+    - host: openassassin.ly1996.xyz
       http:
         paths:
           # 前端 nginx 负责把 /api/ 反代到 backend:8000，因此这里只需指向 frontend。
@@ -50,9 +50,9 @@ spec:
   # TLS（可选）：先创建/签发证书 Secret，再取消注释
   # tls:
   #   - hosts:
-  #       - openassassin.example.com
+  #       - openassassin.ly1996.xyz
   #     secretName: openassassin-tls
   #
   # 使用 cert-manager 时可同时添加：
   #   cert-manager.io/cluster-issuer: letsencrypt-prod
-  #   nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  #   nginx.org/ssl-redirect: "true"
