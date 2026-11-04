@@ -90,12 +90,19 @@ if [ -n "$AUTH_HEADER" ]; then
   fi
 fi
 
-# 7. Frontend
+# 7. Vulnerability monitoring (read-only, no outbound calls)
+if [ -n "$AUTH_HEADER" ]; then
+  check "GET /api/v1/vulnerabilities/catalog — authenticated" 200 GET "$BASE/api/v1/vulnerabilities/catalog" "" "$AUTH_HEADER"
+  check "GET /api/v1/vulnerabilities/components — authenticated" 200 GET "$BASE/api/v1/vulnerabilities/components" "" "$AUTH_HEADER"
+fi
+
+# 8. Frontend
 check "Frontend :8080" 200 GET "$FRONTEND"
 
-# 8. Unauthenticated access
+# 9. Unauthenticated access
 check "GET /api/v1/scripts — unauthenticated" 403 GET "$BASE/api/v1/scripts"
 check "GET /api/v1/system/version — unauthenticated" 403 GET "$BASE/api/v1/system/version"
+check "GET /api/v1/vulnerabilities/components — unauthenticated" 403 GET "$BASE/api/v1/vulnerabilities/components"
 check "GET /docs — disabled" 404 GET "$BASE/docs"
 check "GET /openapi.json — disabled" 404 GET "$BASE/openapi.json"
 

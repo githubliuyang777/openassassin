@@ -8,6 +8,7 @@ from app.models.domain import Domain
 from app.models.domain_whois import DomainWhois
 from app.models.subscription import SubscriptionAlert, Subscription
 from app.models.site_monitor import SiteMonitor
+from app.models.vulnerability import VulnerabilityComponent, VulnerabilityFinding
 from app.database import china_now
 
 SEVERITY_DANGER = "danger"
@@ -19,6 +20,7 @@ SOURCE_DOMAIN_CERT = "domain_cert"
 SOURCE_DOMAIN_WHOIS = "domain_whois"
 SOURCE_SUBSCRIPTION = "subscription"
 SOURCE_SITE_MONITOR = "site_monitor"
+SOURCE_VULNERABILITY = "vulnerability"
 
 SEVERITY_ORDER = {SEVERITY_DANGER: 0, SEVERITY_WARNING: 1, SEVERITY_INFO: 2}
 
@@ -142,6 +144,28 @@ def get_all_alerts(db: Session) -> list[dict]:
             "message": f"站点 {dm.name} 不可达: {dm.target}",
             "severity": SEVERITY_DANGER,
             "link": "/monitor/site-monitor",
+            "days_remaining": 0,
+        })
+
+    # 6. Vulnerability findings — one aggregated alert
+    vuln_rows = (
+        db.query(VulnerabilityComponent.id, VulnerabilityFinding.severity)
+        .join(VulnerabilityFinding, VulnerabilityFinding.component_id == VulnerabilityComponent.id)
+        .filter(
+            VulnerabilityFinding.status == "open",
+            VulnerabilityComponent.alert_enabled.is_(True),
+        )
+        .all()
+    )
+    if vuln_rows:
+        component_ids = {row[0] for row in vuln_rows}
+        has_high = any(row[1] in ("critical", "high") for row in vuln_rows)
+        alerts.append({
+            "id": "vuln-summary",
+            "source": SOURCE_VULNERABILITY,
+            "message": f"{len(component_ids)} 个组件存在已知漏洞，需要升级",
+            "severity": SEVERITY_DANGER if has_high else SEVERITY_WARNING,
+            "link": "/vulnerabilities",
             "days_remaining": 0,
         })
 
