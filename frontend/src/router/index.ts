@@ -35,6 +35,7 @@ const router = createRouter({
         { path: 'monitor/domains', name: 'monitor-domains', component: () => import('@/views/DomainCertView.vue') },
         { path: 'notepads', name: 'Notepads', component: () => import('@/views/NotepadView.vue') },
         { path: 'subscriptions', name: 'Subscriptions', component: () => import('@/views/SubscriptionView.vue') },
+        { path: 'vulnerabilities', name: 'Vulnerabilities', component: () => import('@/views/VulnerabilityView.vue') },
         { path: 'hosts', name: 'Hosts', component: () => import('@/views/HostListView.vue') },
         { path: 'hosts/:id', name: 'HostDetail', component: () => import('@/views/HostDetailView.vue') },
         { path: 'hosts/:id/terminal', name: 'HostTerminal', component: () => import('@/views/HostTerminalView.vue') },

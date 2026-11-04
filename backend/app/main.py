@@ -9,7 +9,7 @@ from app.middleware.audit_middleware import AuditMiddleware
 from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.services.auth_service import get_or_create_admin
-from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors, notification_groups, notification_recipients, dingtalk, agents, overview, system
+from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors, notification_groups, notification_recipients, dingtalk, agents, overview, system, vulnerabilities
 
 
 def _migrate(table: str, columns: list[tuple[str, str]]):
@@ -311,6 +311,24 @@ async def _host_agent_check_loop():
             pass
 
 
+async def _vulnerability_check_loop():
+    """Background task: daily check of registered component vulnerabilities at 09:00 CST."""
+    last_run_date = ""
+    while True:
+        await asyncio.sleep(3600)
+        try:
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc)
+            today = now.strftime("%Y-%m-%d")
+            if now.hour != 1 or last_run_date == today:
+                continue
+            from app.services.vulnerability_service import check_all_components
+            await asyncio.to_thread(check_all_components)
+            last_run_date = today
+        except Exception:
+            pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     os.makedirs("data", exist_ok=True)
@@ -333,12 +351,14 @@ async def lifespan(app: FastAPI):
     sub_task = asyncio.create_task(_subscription_check_loop())
     site_task = asyncio.create_task(_site_monitor_check_loop())
     agent_task = asyncio.create_task(_host_agent_check_loop())
+    vuln_task = asyncio.create_task(_vulnerability_check_loop())
     yield
     task.cancel()
     cleanup_task.cancel()
     sub_task.cancel()
     site_task.cancel()
     agent_task.cancel()
+    vuln_task.cancel()
 
 
 API_VERSION = "v1"  # API 契约版本，不是构建版本；构建版本只通过鉴权接口返回
@@ -383,6 +403,7 @@ app.include_router(dingtalk.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")
 app.include_router(overview.router, prefix="/api/v1")
 app.include_router(system.router, prefix="/api/v1")
+app.include_router(vulnerabilities.router, prefix="/api/v1")
 
 
 @app.get("/api/health")

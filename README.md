@@ -59,6 +59,7 @@ kubectl apply -k k8s
 | 执行历史 | 查看历史执行记录和日志，按脚本筛选 |
 | 主机运维 | 管理远程主机，WebSocket SSH 终端登录，操作审计 |
 | 订阅 | 订阅开源组件 GitHub 仓库，自动检测新版本和安全公告 |
+| 漏洞监控 | 登记组件/依赖包及版本，每日从 OSV/NVD 匹配已知漏洞，提示修复版本并汇总到顶部告警横幅 |
 | 域名证书 | 批量导入域名，SSL 证书到期监控，告警开关 |
 | 域名 WHOIS | 域名注册到期监控，告警开关 |
 | 网络测试 | TCP 端口连通性测试 |
@@ -95,16 +96,16 @@ openassassin/
 │   │   ├── api/                    # REST 路由
 │   │   ├── services/               # 业务逻辑 + 沙箱 + 加密 + 邮件
 │   │   └── middleware/             # JWT Bearer 鉴权
-│   ├── tests/                      # pytest 测试 (175 用例)
+│   ├── tests/                      # pytest 测试 (197 用例)
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
 │   │   ├── router/                 # Vue Router + beforeEach 守卫
 │   │   ├── stores/                 # Pinia 状态管理
 │   │   ├── api/                    # Axios client + 模块 API
-│   │   ├── views/                  # 页面组件 (18 个)
+│   │   ├── views/                  # 页面组件 (19 个)
 │   │   ├── layouts/                # MainLayout (侧边栏 + 顶栏)
-│   │   └── __tests__/              # vitest 测试 (13 用例)
+│   │   └── __tests__/              # vitest 测试 (14 用例)
 │   └── package.json
 ├── tests/
 │   └── smoke.sh                    # curl 冒烟测试
@@ -139,6 +140,9 @@ openassassin/
 | `ALERT_EMAIL` | — | 密钥到期告警收件邮箱 |
 | `ALERT_BEFORE_DAYS` | `7` | 提前多少天触发到期告警 |
 | `ALERT_CHECK_INTERVAL_MINUTES` | `60` | 后台告警检查间隔 (分钟) |
+| `OSV_API_BASE` | `https://api.osv.dev` | OSV 漏洞数据源地址 (可配置镜像/代理) |
+| `NVD_API_BASE` | `https://services.nvd.nist.gov` | NVD 漏洞数据源地址 |
+| `NVD_API_KEY` | — | NVD API Key (可选，配置后请求限速从 5 次/30s 提升到 50 次/30s) |
 | `SSH_CONNECT_TIMEOUT` | `10` | SSH 连接超时 (秒) |
 | `SSH_TERMINAL_IDLE_TIMEOUT` | `3600` | SSH 终端空闲超时 (秒) |
 | `AUDIT_ENABLED` | `true` | 是否启用审计日志 |
@@ -183,10 +187,10 @@ npm run test      # 运行测试
 ### 测试
 
 ```bash
-# 后端测试 (175 用例)
+# 后端测试 (197 用例)
 cd backend && pytest tests/ -v
 
-# 前端测试 (13 用例)
+# 前端测试 (14 用例)
 cd frontend && npm run test
 
 # 冒烟测试 (Docker Compose 启动后)
@@ -267,6 +271,20 @@ PR → backend-tests  ──┐
 | GET | `/api/v1/subscriptions/{id}/alerts` | 订阅告警列表 | 是 |
 | PUT | `/api/v1/subscriptions/alerts/{id}/read` | 标记告警已读 | 是 |
 | POST | `/api/v1/subscriptions/lookup` | 查询仓库信息 | 是 |
+
+### 漏洞监控
+
+| 方法 | 路径 | 说明 | 认证 |
+|------|------|------|------|
+| GET | `/api/v1/vulnerabilities/catalog` | 支持的组件类型目录 | 是 |
+| GET/POST | `/api/v1/vulnerabilities/components` | 组件列表 / 添加组件 | 是 |
+| PUT/DELETE | `/api/v1/vulnerabilities/components/{id}` | 更新 / 删除组件 | 是 |
+| GET | `/api/v1/vulnerabilities/components/{id}/findings` | 组件漏洞详情 | 是 |
+| POST | `/api/v1/vulnerabilities/components/{id}/check` | 后台检查单个组件 | 是 |
+| POST | `/api/v1/vulnerabilities/check-all` | 后台检查全部组件 | 是 |
+| PUT | `/api/v1/vulnerabilities/findings/{id}/status` | 忽略 / 恢复漏洞 | 是 |
+
+数据源：Go/npm/PyPI/Composer/Go Module 等包生态使用 [OSV](https://osv.dev)，Node.js/PHP/NGINX/Jenkins/GitLab 等运行环境使用 NVD CPE。每日 09:00 (北京时间) 自动检查，失败原因会显示在组件列表中，不影响上一次结果。
 
 ### 系统
 

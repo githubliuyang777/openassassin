@@ -78,6 +78,7 @@ import {
   NotificationsOutline,
   DocumentTextOutline,
   MailOutline,
+  BugOutline,
 } from '@vicons/ionicons5'
 import AlertBanner from '@/components/AlertBanner.vue'
 import { fetchAlertSummary } from '@/api/alerts'
@@ -167,6 +168,7 @@ const menuOptions = [
   { label: '主机运维', key: 'Hosts', icon: () => h(NIcon, null, () => h(ServerOutline)) },
   { label: '记事本', key: 'Notepads', icon: () => h(NIcon, null, () => h(DocumentTextOutline)) },
   { label: '订阅', key: 'Subscriptions', icon: () => h(NIcon, null, () => h(NotificationsOutline)) },
+  { label: '漏洞', key: 'Vulnerabilities', icon: () => h(NIcon, null, () => h(BugOutline)) },
   {
     label: '监控',
     key: 'Monitor',
@@ -196,6 +198,7 @@ function activeKeyFromPath() {
   if (route.path.startsWith('/executions')) return 'Executions'
   if (route.path.startsWith('/notepads')) return 'Notepads'
   if (route.path.startsWith('/subscriptions')) return 'Subscriptions'
+  if (route.path.startsWith('/vulnerabilities')) return 'Vulnerabilities'
   if (route.path.startsWith('/hosts')) return 'Hosts'
   if (route.path.startsWith('/system/audit-logs')) return 'system-audit-logs'
   if (route.path.startsWith('/system/network-test')) return 'system-network-test'

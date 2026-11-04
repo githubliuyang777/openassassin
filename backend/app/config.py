@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     host_agent_alert_mem_percent: float = 90.0
     host_agent_alert_disk_percent: float = 85.0
     host_agent_alert_consecutive: int = 3
+    osv_api_base: str = "https://api.osv.dev"
+    nvd_api_base: str = "https://services.nvd.nist.gov"
+    nvd_api_key: str = ""
 
     @field_validator("app_version", mode="before")
     @classmethod
