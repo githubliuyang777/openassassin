@@ -129,6 +129,52 @@ class TestComponentCRUD:
         ).status_code == 404
 
 
+class _FakeResponse:
+    def __init__(self, data):
+        self._data = data
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._data
+
+
+class TestClients:
+    def test_osv_request_payload(self, monkeypatch):
+        captured = {}
+
+        def fake_post(url, json, headers, timeout):
+            captured.update({"url": url, "json": json, "headers": headers})
+            return _FakeResponse({"vulns": []})
+
+        monkeypatch.setattr(vulnerability_service.httpx, "post", fake_post)
+        vulnerability_service._query_osv(
+            "golang", vulnerability_service.VULN_CATALOG["golang"], "", "go1.21.0"
+        )
+        assert captured["json"] == {
+            "package": {"ecosystem": "Go", "name": "stdlib"},
+            "version": "1.21.0",
+        }
+        assert captured["url"].endswith("/v1/query")
+        assert captured["headers"]["User-Agent"] == "openAssassin/1.0"
+
+    def test_nvd_request_params(self, monkeypatch):
+        captured = {}
+
+        def fake_get(url, params, headers, timeout):
+            captured.update(params)
+            return _FakeResponse({"totalResults": 0, "vulnerabilities": []})
+
+        monkeypatch.setattr(vulnerability_service.httpx, "get", fake_get)
+        vulnerability_service._fetch_nvd("f5", "nginx_open_source", "1.24.0")
+        assert captured["virtualMatchString"] == "cpe:2.3:a:f5:nginx_open_source"
+        assert captured["versionStart"] == "1.24.0"
+        assert captured["versionStartType"] == "including"
+        assert captured["versionEnd"] == "1.24.0"
+        assert captured["versionEndType"] == "including"
+
+
 class TestParsers:
     def test_osv_dedupe_and_severity(self):
         vulns = [
@@ -235,6 +281,33 @@ class TestSync:
         db_session.expire_all()
         assert db_session.query(VulnerabilityFinding).count() == 0
 
+    def test_check_returns_busy_when_locked(self, db_session):
+        comp = _component(db_session)
+        vulnerability_service._check_lock.acquire()
+        try:
+            assert vulnerability_service.check_component(comp.id) == -1
+        finally:
+            vulnerability_service._check_lock.release()
+
+        db_session.expire_all()
+        assert db_session.get(VulnerabilityComponent, comp.id).last_checked_at is None
+
+    def test_version_changed_during_fetch_is_discarded(self, db_session, monkeypatch):
+        comp = _component(db_session)
+
+        def _fetch_and_change_version(*args, **kwargs):
+            comp.version = "9.9.9"
+            db_session.commit()
+            return [_finding()]
+
+        monkeypatch.setattr(vulnerability_service, "_fetch_findings", _fetch_and_change_version)
+        assert vulnerability_service.check_component(comp.id) == 0
+
+        db_session.expire_all()
+        comp = db_session.get(VulnerabilityComponent, comp.id)
+        assert comp.last_checked_at is None
+        assert db_session.query(VulnerabilityFinding).count() == 0
+
     def test_fetch_failure_keeps_findings(self, db_session, monkeypatch):
         comp = _component(db_session)
         monkeypatch.setattr(vulnerability_service, "_fetch_findings", lambda *args, **kwargs: [_finding()])
@@ -306,6 +379,20 @@ class TestCheckEndpoints:
     def test_check_missing_component(self, client, auth_headers):
         resp = client.post("/api/v1/vulnerabilities/components/99999/check", headers=auth_headers)
         assert resp.status_code == 404
+
+    def test_check_conflict_when_locked(self, client, auth_headers, no_findings):
+        resp = client.post(
+            "/api/v1/vulnerabilities/components",
+            json={"component_key": "php", "version": "8.1.0"},
+            headers=auth_headers,
+        )
+        comp_id = resp.json()["id"]
+        vulnerability_service._check_lock.acquire()
+        try:
+            resp = client.post(f"/api/v1/vulnerabilities/components/{comp_id}/check", headers=auth_headers)
+            assert resp.status_code == 409
+        finally:
+            vulnerability_service._check_lock.release()
 
 
 class TestAlertIntegration:

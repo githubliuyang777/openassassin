@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -10,6 +11,8 @@ from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.services.auth_service import get_or_create_admin
 from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors, notification_groups, notification_recipients, dingtalk, agents, overview, system, vulnerabilities
+
+logger = logging.getLogger(__name__)
 
 
 def _migrate(table: str, columns: list[tuple[str, str]]):
@@ -320,13 +323,14 @@ async def _vulnerability_check_loop():
             from datetime import datetime, timezone
             now = datetime.now(timezone.utc)
             today = now.strftime("%Y-%m-%d")
-            if now.hour != 1 or last_run_date == today:
+            if now.hour < 1 or last_run_date == today:
                 continue
             from app.services.vulnerability_service import check_all_components
-            await asyncio.to_thread(check_all_components)
-            last_run_date = today
+            result = await asyncio.to_thread(check_all_components)
+            if result != -1:
+                last_run_date = today
         except Exception:
-            pass
+            logger.warning("vulnerability daily check failed", exc_info=True)
 
 
 @asynccontextmanager

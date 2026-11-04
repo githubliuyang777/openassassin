@@ -40,7 +40,7 @@ def create_component(
         comp = vulnerability_service.create_component(db, data)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
-    background.add_task(vulnerability_service.check_component, comp.id)
+    background.add_task(vulnerability_service.check_component, comp.id, wait=True)
     return vulnerability_service.component_dict(comp)
 
 
@@ -60,7 +60,7 @@ def update_component(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     if changed:
-        background.add_task(vulnerability_service.check_component, comp.id)
+        background.add_task(vulnerability_service.check_component, comp.id, wait=True)
     return vulnerability_service.component_dict(comp, vulnerability_service.finding_counts(db, comp.id))
 
 
@@ -98,7 +98,7 @@ def check_component(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="组件不存在")
     if vulnerability_service.is_check_running():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="已有检查进行中，请稍后重试")
-    background.add_task(vulnerability_service.check_component, component_id)
+    background.add_task(vulnerability_service.check_component, component_id, wait=True)
     return {"message": "已开始检查"}
 
 
@@ -109,7 +109,7 @@ def check_all(
 ):
     if vulnerability_service.is_check_running():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="已有检查进行中，请稍后重试")
-    background.add_task(vulnerability_service.check_all_components)
+    background.add_task(vulnerability_service.check_all_components, wait=True)
     return {"message": "已开始检查全部组件"}
 
 
