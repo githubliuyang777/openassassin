@@ -1,5 +1,10 @@
 import { api } from './client'
 
+export interface DomainProviderConfig {
+  panel_id?: number
+  site_name?: string
+}
+
 export interface DomainInfo {
   id: number
   domain: string
@@ -11,9 +16,24 @@ export interface DomainInfo {
   ssl_expired: boolean
   alert_enabled: boolean
   notification_group_id: number | null
+  cert_provider: string
+  cert_provider_config: DomainProviderConfig
+  cert_auto_renew: boolean
+  last_renew_attempt_at: string | null
+  last_renew_status: string
+  last_renew_error: string
   days_remaining: number | null
   last_checked_at: string | null
   created_at: string | null
+}
+
+export interface DomainUpdate {
+  port?: number
+  alert_enabled?: boolean
+  notification_group_id?: number | null
+  cert_provider?: string
+  cert_provider_config?: DomainProviderConfig
+  cert_auto_renew?: boolean
 }
 
 export function fetchDomains(): Promise<{ data: DomainInfo[] }> {
@@ -46,6 +66,14 @@ export function batchToggleDomainAlert(ids: number[], enabled: boolean): Promise
 
 export function batchSetNotificationGroup(ids: number[], notification_group_id: number | null): Promise<{ data: { updated: number } }> {
   return api.post('/domains/batch-set-notification-group', { ids, notification_group_id })
+}
+
+export function updateDomain(id: number, data: DomainUpdate): Promise<{ data: DomainInfo }> {
+  return api.put(`/domains/${id}`, data)
+}
+
+export function renewDomainCert(id: number): Promise<{ data: { message: string } }> {
+  return api.post(`/domains/${id}/renew-cert`)
 }
 
 export function deleteDomain(id: number): Promise<void> {

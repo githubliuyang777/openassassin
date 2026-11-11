@@ -10,6 +10,7 @@ from cryptography.hazmat.backends import default_backend
 from sqlalchemy.orm import Session
 
 from app.models.domain import Domain
+from app.services import cert_provider_service
 
 _DOMAIN_RE = re.compile(
     r"^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$"
@@ -103,34 +104,87 @@ def batch_import(db: Session, entries: list[str]) -> dict:
     return result
 
 
+def domain_dict(d: Domain) -> dict:
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    data = {
+        "id": d.id,
+        "domain": d.domain,
+        "port": d.port,
+        "ssl_subject": d.ssl_subject,
+        "ssl_issuer": d.ssl_issuer,
+        "ssl_not_before": d.ssl_not_before,
+        "ssl_not_after": d.ssl_not_after,
+        "ssl_expired": d.ssl_expired,
+        "alert_enabled": d.alert_enabled,
+        "notification_group_id": d.notification_group_id,
+        "cert_provider": d.cert_provider or "none",
+        "cert_provider_config": d.cert_provider_config or {},
+        "cert_auto_renew": bool(d.cert_auto_renew),
+        "last_renew_attempt_at": d.last_renew_attempt_at,
+        "last_renew_status": d.last_renew_status or "",
+        "last_renew_error": d.last_renew_error or "",
+        "days_remaining": None,
+        "last_checked_at": d.last_checked_at,
+        "created_at": d.created_at,
+    }
+    if d.ssl_not_after:
+        data["days_remaining"] = (d.ssl_not_after - now).days
+    return data
+
+
 def list_domains(db: Session) -> list[dict]:
     """List all domains with computed days_remaining, sorted by expiry ASC (NULLs last)."""
     domains = db.query(Domain).order_by(
         Domain.ssl_not_after.is_(None),
         Domain.ssl_not_after.asc()
     ).all()
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    results = []
-    for d in domains:
-        data = {
-            "id": d.id,
-            "domain": d.domain,
-            "port": d.port,
-            "ssl_subject": d.ssl_subject,
-            "ssl_issuer": d.ssl_issuer,
-            "ssl_not_before": d.ssl_not_before,
-            "ssl_not_after": d.ssl_not_after,
-            "ssl_expired": d.ssl_expired,
-            "alert_enabled": d.alert_enabled,
-            "days_remaining": None,
-            "last_checked_at": d.last_checked_at,
-            "created_at": d.created_at,
-        }
-        if d.ssl_not_after:
-            delta = d.ssl_not_after - now
-            data["days_remaining"] = delta.days
-        results.append(data)
-    return results
+    return [domain_dict(d) for d in domains]
+
+
+def update_domain(db: Session, dom: Domain, data) -> Domain:
+    fields = data.model_fields_set
+    if "port" in fields and data.port is not None:
+        dom.port = data.port
+    if "alert_enabled" in fields and data.alert_enabled is not None:
+        dom.alert_enabled = data.alert_enabled
+    if "notification_group_id" in fields:
+        dom.notification_group_id = data.notification_group_id
+
+    old_provider = dom.cert_provider or "none"
+    provider = (
+        data.cert_provider
+        if "cert_provider" in fields and data.cert_provider is not None
+        else old_provider
+    )
+    if provider in ("", None):
+        provider = "none"
+    config = (
+        data.cert_provider_config
+        if "cert_provider_config" in fields and data.cert_provider_config is not None
+        else (dom.cert_provider_config or {})
+    )
+    if provider == "none":
+        if data.cert_auto_renew is True:
+            raise ValueError("未接入证书维护平台时不能开启自动续签")
+        config = {}
+    else:
+        config = cert_provider_service.validate_domain_config(db, provider, config)
+
+    if provider != old_provider:
+        dom.last_renew_attempt_at = None
+        dom.last_renew_status = ""
+        dom.last_renew_error = ""
+
+    dom.cert_provider = provider
+    dom.cert_provider_config = config
+    if "cert_auto_renew" in fields and data.cert_auto_renew is not None:
+        dom.cert_auto_renew = data.cert_auto_renew
+    if provider == "none":
+        dom.cert_auto_renew = False
+
+    db.commit()
+    db.refresh(dom)
+    return dom
 
 
 def refresh_domain(db: Session, domain_id: int) -> Domain | None:

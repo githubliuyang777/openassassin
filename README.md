@@ -60,7 +60,7 @@ kubectl apply -k k8s
 | 主机运维 | 管理远程主机，WebSocket SSH 终端登录，操作审计，CPU/内存/磁盘状态 |
 | 订阅 | 订阅开源组件 GitHub 仓库，自动检测新版本和安全公告 |
 | 漏洞监控 | 登记组件/依赖包及版本，每日从 OSV/NVD 匹配已知漏洞，提示修复版本并汇总到顶部告警横幅 |
-| 域名证书 | 批量导入域名，SSL 证书到期监控，告警开关 |
+| 域名证书 | 批量导入域名，SSL 证书到期监控；可按域名接入宝塔面板自动续签，预留其它平台扩展 |
 | 域名 WHOIS | 域名注册到期监控，告警开关 |
 | 网络测试 | TCP 端口连通性测试 |
 | 审计日志 | 记录所有管理员操作（操作者/时间/IP/详情），180 天保留 |
@@ -70,6 +70,8 @@ kubectl apply -k k8s
 | 版本信息 | 管理员在个人中心查看当前部署版本，未登录不可见 |
 | 忘记密码 | 邮箱验证码找回密码（需配置 SMTP） |
 | 双因素认证 | TOTP (Google Authenticator) 二次验证，Email OTP 绑定过渡，8 个一次性备用码 |
+
+> 域名证书的自动续签按域名单独开启：编辑域名 → 选择「宝塔面板」→ 选择面板/站点。宝塔面板需在后台开启 API 接口并把本平台服务器 IP 加入白名单；续签使用 HTTP-01 验证，证书进入到期告警阈值后触发。站点名留空时按域名精确匹配；同一宝塔站点只建议为一个域名开启自动续签，避免多个订单互相覆盖证书；无法读取证书到期时间时仍会按 72 小时冷却尝试。后端通过 Provider 注册表扩展其它证书维护平台，新增平台不需要修改域名表结构。
 
 ## 技术栈
 
@@ -96,7 +98,7 @@ openassassin/
 │   │   ├── api/                    # REST 路由
 │   │   ├── services/               # 业务逻辑 + 沙箱 + 加密 + 邮件
 │   │   └── middleware/             # JWT Bearer 鉴权
-│   ├── tests/                      # pytest 测试 (205 用例)
+│   ├── tests/                      # pytest 测试 (239 用例)
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
@@ -105,7 +107,7 @@ openassassin/
 │   │   ├── api/                    # Axios client + 模块 API
 │   │   ├── views/                  # 页面组件 (19 个)
 │   │   ├── layouts/                # MainLayout (侧边栏 + 顶栏)
-│   │   └── __tests__/              # vitest 测试 (14 用例)
+│   │   └── __tests__/              # vitest 测试 (15 用例)
 │   └── package.json
 ├── tests/
 │   └── smoke.sh                    # curl 冒烟测试
@@ -187,10 +189,10 @@ npm run test      # 运行测试
 ### 测试
 
 ```bash
-# 后端测试 (205 用例)
+# 后端测试 (239 用例)
 cd backend && pytest tests/ -v
 
-# 前端测试 (14 用例)
+# 前端测试 (15 用例)
 cd frontend && npm run test
 
 # 冒烟测试 (Docker Compose 启动后)
@@ -258,9 +260,20 @@ PR → backend-tests  ──┐
 |------|------|------|------|
 | GET | `/api/v1/alerts/summary` | 告警聚合摘要 | 是 |
 | GET/POST | `/api/v1/domains` | 域名证书列表 / 添加 | 是 |
+| PUT | `/api/v1/domains/{id}` | 编辑域名、证书维护平台及自动续签配置 | 是 |
 | PUT | `/api/v1/domains/{id}/toggle-alert` | 切换域名证书告警开关 | 是 |
+| POST | `/api/v1/domains/{id}/renew-cert` | 手动触发证书续签 | 管理员 |
 | GET/POST | `/api/v1/whois-domains` | WHOIS 域名列表 / 添加 | 是 |
 | PUT | `/api/v1/whois-domains/{id}/toggle-alert` | 切换 WHOIS 告警开关 | 是 |
+
+### 证书维护平台
+
+| 方法 | 路径 | 说明 | 认证 |
+|------|------|------|------|
+| GET | `/api/v1/cert-providers` | 已实现的证书维护平台列表 | 是 |
+| GET/POST | `/api/v1/baota/panels` | 宝塔面板列表 / 新增 | 是 / 管理员 |
+| PUT/DELETE | `/api/v1/baota/panels/{id}` | 更新 / 删除宝塔面板 | 管理员 |
+| POST | `/api/v1/baota/panels/{id}/test` | 验证 API 密钥并读取站点列表 | 管理员 |
 
 ### 订阅
 

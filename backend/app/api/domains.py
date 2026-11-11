@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.middleware.auth_middleware import get_current_user
-from app.schemas.domain import DomainCreate, DomainBatchImport, DomainResponse
-from app.services import domain_service
+from app.middleware.auth_middleware import get_current_admin_user, get_current_user
+from app.schemas.domain import DomainCreate, DomainBatchImport, DomainResponse, DomainUpdate
+from app.services import cert_provider_service, cert_renew_service, domain_service
 
 router = APIRouter(prefix="/domains", tags=["domains"])
 
@@ -63,6 +63,47 @@ def refresh_single(
     return _to_response(dom)
 
 
+@router.put("/{domain_id}", response_model=DomainResponse)
+def update_domain(
+    domain_id: int,
+    body: DomainUpdate,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_admin_user),
+):
+    dom = db.query(domain_service.Domain).filter(domain_service.Domain.id == domain_id).first()
+    if not dom:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="域名不存在")
+    try:
+        dom = domain_service.update_domain(db, dom, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    return _to_response(dom)
+
+
+@router.post("/{domain_id}/renew-cert", status_code=status.HTTP_202_ACCEPTED)
+def renew_cert(
+    domain_id: int,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_admin_user),
+):
+    dom = db.query(domain_service.Domain).filter(domain_service.Domain.id == domain_id).first()
+    if not dom:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="域名不存在")
+    provider_key = dom.cert_provider or "none"
+    provider = cert_provider_service.get_provider(provider_key)
+    if not provider:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="该域名未接入证书维护平台")
+    try:
+        provider.validate_config(db, dom.cert_provider_config or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    if cert_renew_service.is_renew_running():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="已有证书续签任务进行中")
+    background.add_task(cert_renew_service.renew_domain, domain_id)
+    return {"message": "已开始续签"}
+
+
 @router.put("/{domain_id}/toggle-alert", response_model=DomainResponse)
 def toggle_alert(
     domain_id: int,
@@ -112,23 +153,5 @@ def delete_domain(
 
 
 def _to_response(dom) -> dict:
-    """Convert Domain model to response dict with days_remaining."""
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    data = {
-        "id": dom.id,
-        "domain": dom.domain,
-        "port": dom.port,
-        "ssl_subject": dom.ssl_subject,
-        "ssl_issuer": dom.ssl_issuer,
-        "ssl_not_before": dom.ssl_not_before,
-        "ssl_not_after": dom.ssl_not_after,
-        "ssl_expired": dom.ssl_expired,
-        "alert_enabled": dom.alert_enabled,
-        "days_remaining": None,
-        "last_checked_at": dom.last_checked_at,
-        "created_at": dom.created_at,
-    }
-    if dom.ssl_not_after:
-        data["days_remaining"] = (dom.ssl_not_after - now).days
-    return data
+    """Convert Domain model to response dict with computed days_remaining."""
+    return domain_service.domain_dict(dom)
