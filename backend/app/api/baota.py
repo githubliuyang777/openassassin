@@ -84,7 +84,12 @@ def test_panel(
     _user: dict = Depends(get_current_admin_user),
 ):
     try:
-        sites = baota_service.test_panel(db, panel_id)
+        result = baota_service.test_panel(db, panel_id)
     except baota_service.BaotaError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
-    return {"ok": True, "message": f"连接成功，共 {len(sites)} 个站点", "sites": sites}
+    return {
+        "ok": True,
+        "message": f"连接成功：{len(result['orders'])} 个证书订单 / {len(result['sites'])} 个站点",
+        "sites": result["sites"],
+        "orders": result["orders"],
+    }

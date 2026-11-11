@@ -108,7 +108,7 @@
           <n-form-item label="宝塔面板">
             <n-select v-model:value="editForm.panel_id" :options="panelOptions" placeholder="选择宝塔面板" @update:value="onPanelChange" />
           </n-form-item>
-          <n-form-item label="宝塔站点">
+          <n-form-item label="部署站点名（可选）">
             <n-space vertical style="width: 100%">
               <n-space>
                 <n-select
@@ -117,14 +117,25 @@
                   filterable
                   tag
                   clearable
-                  placeholder="留空按域名自动匹配"
+                  placeholder="留空使用 ACME 订单域名"
                   style="min-width: 260px"
                 />
-                <n-button :loading="loadingSites" :disabled="!editForm.panel_id" @click="handleLoadSites">读取站点</n-button>
+                <n-button :loading="loadingSites" :disabled="!editForm.panel_id" @click="handleLoadSites">读取站点/订单</n-button>
               </n-space>
-              <span style="font-size: 12px; color: #999">留空时按域名精确匹配宝塔站点，也可手动填写站点名</span>
+              <span style="font-size: 12px; color: #999">优先按 ACME 订单域名匹配；无订单时按该名称匹配宝塔站点</span>
             </n-space>
           </n-form-item>
+          <n-form-item label="ACME 订单 ID（可选）">
+            <n-input v-model:value="editForm.order_index" placeholder="留空自动匹配该域名最新的有效订单" />
+          </n-form-item>
+          <n-space>
+            <n-form-item label="站点 ID（可选）">
+              <n-input-number v-model:value="editForm.site_id" :min="1" placeholder="无订单时新申请需要" style="width: 180px" />
+            </n-form-item>
+            <n-form-item label="站点根目录（可选）">
+              <n-input v-model:value="editForm.site_path" placeholder="/www/wwwroot/example.com" style="width: 280px" />
+            </n-form-item>
+          </n-space>
           <n-form-item label="自动续签">
             <n-switch v-model:value="editForm.cert_auto_renew" />
             <span style="font-size: 12px; color: #999; margin-left: 8px">证书进入到期告警阈值后自动触发</span>
@@ -243,6 +254,9 @@ const editForm = ref({
   cert_provider: 'none',
   panel_id: null as number | null,
   site_name: '',
+  order_index: '',
+  site_id: null as number | null,
+  site_path: '',
   cert_auto_renew: false,
 })
 const renewingIds = ref<number[]>([])
@@ -543,6 +557,9 @@ function openEdit(row: DomainInfo) {
     cert_provider: row.cert_provider || 'none',
     panel_id: config.panel_id ?? null,
     site_name: config.site_name || '',
+    order_index: config.order_index || '',
+    site_id: config.site_id ?? null,
+    site_path: config.site_path || '',
     cert_auto_renew: row.cert_auto_renew,
   }
   siteOptions.value = config.site_name ? [{ label: config.site_name, value: config.site_name }] : []
@@ -568,8 +585,17 @@ async function handleLoadSites() {
   loadingSites.value = true
   try {
     const resp = await testBaotaPanel(editForm.value.panel_id)
-    siteOptions.value = resp.data.sites.map((s) => ({ label: s.name, value: s.name }))
-    message.success(`读取到 ${resp.data.sites.length} 个站点`)
+    const sites = resp.data.sites || []
+    const orders = resp.data.orders || []
+    if (sites.length) {
+      siteOptions.value = sites.map((s) => ({ label: s.name, value: s.name }))
+    } else if (orders.length) {
+      const domains = Array.from(new Set(orders.flatMap((o) => o.domains)))
+      siteOptions.value = domains.map((d) => ({ label: d, value: d }))
+    } else {
+      siteOptions.value = []
+    }
+    message.success(resp.data.message || `读取到 ${sites.length} 个站点`)
   } catch (e: any) {
     message.error(e.response?.data?.detail || e.message || '读取站点失败')
   } finally {
@@ -590,7 +616,13 @@ async function handleSaveEdit() {
       notification_group_id: editForm.value.notification_group_id,
       cert_provider: editForm.value.cert_provider,
       cert_provider_config: editForm.value.cert_provider === 'baota'
-        ? { panel_id: editForm.value.panel_id!, site_name: (editForm.value.site_name || '').trim() }
+        ? {
+            panel_id: editForm.value.panel_id!,
+            site_name: (editForm.value.site_name || '').trim(),
+            order_index: (editForm.value.order_index || '').trim(),
+            site_id: editForm.value.site_id,
+            site_path: (editForm.value.site_path || '').trim(),
+          }
         : {},
       cert_auto_renew: editForm.value.cert_provider === 'baota' ? editForm.value.cert_auto_renew : false,
     }

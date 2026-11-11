@@ -79,10 +79,19 @@ class BaotaSite(BaseModel):
     name: str
 
 
+class BaotaOrder(BaseModel):
+    index: str
+    domains: list[str] = Field(default_factory=list)
+    status: str = ""
+    cert_timeout: int = 0
+    auth_type: str = ""
+
+
 class BaotaTestResponse(BaseModel):
     ok: bool = True
     message: str = ""
     sites: list[BaotaSite] = Field(default_factory=list)
+    orders: list[BaotaOrder] = Field(default_factory=list)
 
 
 class CertProviderItem(BaseModel):

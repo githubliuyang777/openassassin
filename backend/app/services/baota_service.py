@@ -62,7 +62,7 @@ def _panel_ctx(panel: BaotaPanel) -> dict:
     }
 
 
-def _post(ctx: dict, path: str, data: dict) -> dict:
+def _post(ctx: dict, path: str, data: dict, raw: bool = False):
     try:
         api_key = credential_service.decrypt(ctx["encrypted_api_key"])
     except Exception as exc:
@@ -93,6 +93,10 @@ def _post(ctx: dict, path: str, data: dict) -> dict:
         body = resp.json()
     except ValueError as exc:
         raise BaotaError(f"宝塔面板返回非 JSON 响应 (HTTP {resp.status_code})") from exc
+    if raw:
+        if not isinstance(body, (dict, list)):
+            raise BaotaError("宝塔面板返回格式不正确")
+        return body
     if not isinstance(body, dict):
         raise BaotaError("宝塔面板返回格式不正确")
     return body
@@ -105,6 +109,8 @@ def _raise_if_failed(data: dict, action: str) -> None:
 
 
 def _normalize_sites(payload: dict) -> list[dict]:
+    if not isinstance(payload, dict):
+        return []
     raw = payload.get("sites")
     if not isinstance(raw, list):
         raw = payload.get("data")
@@ -164,6 +170,70 @@ def _resolve_site(sites: list[dict], site_name: str, domain_name: str) -> dict:
     raise BaotaError("匹配到多个宝塔站点，请填写站点名")
 
 
+def get_orders(ctx: dict) -> list[dict]:
+    body = _post(ctx, "/acme", {"action": "get_orders"}, raw=True)
+    if isinstance(body, dict):
+        _raise_if_failed(body, "读取证书订单")
+        for key in ("data", "list", "orders"):
+            if isinstance(body.get(key), list):
+                body = body[key]
+                break
+        else:
+            return []
+    if not isinstance(body, list):
+        raise BaotaError("宝塔返回的证书订单格式不正确")
+
+    orders = []
+    for item in body:
+        if not isinstance(item, dict):
+            continue
+        index = str(item.get("index") or "").strip()
+        if not re.match(r"^[A-Za-z0-9._-]{1,64}$", index):
+            continue
+        domains = [
+            str(name).strip()
+            for name in (item.get("domains") or [])
+            if isinstance(name, str) and name.strip()
+        ]
+        if not domains:
+            continue
+        try:
+            cert_timeout = int(item.get("cert_timeout") or 0)
+        except (TypeError, ValueError):
+            cert_timeout = 0
+        orders.append({
+            "index": index,
+            "domains": domains,
+            "status": str(item.get("status") or ""),
+            "cert_timeout": cert_timeout,
+            "auth_type": str(item.get("auth_type") or ""),
+        })
+    return orders
+
+
+def _order_matches(order: dict, domain_name: str) -> bool:
+    names = {str(name).lower() for name in order.get("domains") or []}
+    domain = domain_name.strip().lower()
+    return (
+        domain in names
+        or (domain.startswith("www.") and domain[4:] in names)
+        or f"www.{domain}" in names
+    )
+
+
+def _select_order(orders: list[dict], domain_name: str, order_index: str = "") -> dict | None:
+    if order_index:
+        for order in orders:
+            if order["index"] == order_index:
+                return order
+        raise BaotaError("指定的 ACME 订单不存在")
+    matches = [order for order in orders if _order_matches(order, domain_name)]
+    if not matches:
+        return None
+    valid = [order for order in matches if order.get("status") == "valid"]
+    return max(valid or matches, key=lambda order: int(order.get("cert_timeout") or 0))
+
+
 def get_panel(db: Session, panel_id: int) -> BaotaPanel:
     panel = db.get(BaotaPanel, panel_id)
     if not panel:
@@ -188,7 +258,36 @@ def validate_domain_config(db: Session, config: dict) -> dict:
     site_name = str(config.get("site_name") or "").strip()
     if len(site_name) > 128:
         raise ValueError("站点名过长")
-    return {"panel_id": panel_id, "site_name": site_name}
+
+    order_index = str(config.get("order_index") or "").strip()
+    if order_index and not re.match(r"^[A-Za-z0-9._-]{1,64}$", order_index):
+        raise ValueError("ACME 订单 ID 格式不正确")
+
+    site_id = config.get("site_id")
+    if site_id in (None, ""):
+        site_id = None
+    else:
+        try:
+            site_id = int(site_id)
+        except (TypeError, ValueError):
+            raise ValueError("站点 ID 必须是数字")
+        if site_id <= 0:
+            raise ValueError("站点 ID 不正确")
+
+    site_path = str(config.get("site_path") or "").strip()
+    if site_path:
+        if not site_path.startswith("/"):
+            raise ValueError("站点根目录必须以 / 开头")
+        if len(site_path) > 512:
+            raise ValueError("站点根目录过长")
+
+    return {
+        "panel_id": panel_id,
+        "site_name": site_name,
+        "order_index": order_index,
+        "site_id": site_id,
+        "site_path": site_path,
+    }
 
 
 def create_panel(db: Session, data) -> BaotaPanel:
@@ -240,10 +339,26 @@ def panel_in_use(db: Session, panel_id: int) -> bool:
     return False
 
 
-def test_panel(db: Session, panel_id: int) -> list[dict]:
+def test_panel(db: Session, panel_id: int) -> dict:
     panel = get_panel(db, panel_id)
-    sites = list_sites(_panel_ctx(panel))
-    return [{"id": site["id"], "name": site["name"]} for site in sites]
+    ctx = _panel_ctx(panel)
+
+    orders = []
+    try:
+        orders = get_orders(ctx)
+    except BaotaError:
+        pass
+    sites = []
+    try:
+        sites = list_sites(ctx)
+    except BaotaError:
+        pass
+    if not orders and not sites:
+        raise BaotaError("无法读取宝塔证书订单或站点列表（请检查 API 密钥、IP 白名单、面板版本）")
+    return {
+        "orders": orders,
+        "sites": [{"id": site["id"], "name": site["name"]} for site in sites],
+    }
 
 
 def start_renewal(domain_name: str, config: dict) -> dict:
@@ -258,8 +373,42 @@ def start_renewal(domain_name: str, config: dict) -> dict:
     finally:
         db.close()
 
-    sites = list_sites(ctx)
-    site = _resolve_site(sites, config.get("site_name", ""), domain_name)
+    order_index = config.get("order_index", "")
+    if order_index:
+        orders = get_orders(ctx)
+    else:
+        try:
+            orders = get_orders(ctx)
+        except BaotaError:
+            orders = []
+    order = _select_order(orders, domain_name, order_index)
+    if order:
+        index = order["index"]
+        renew = _post(ctx, "/acme", {"action": "renew_cert", "index": index})
+        if not isinstance(renew, dict):
+            raise BaotaError("宝塔续签返回格式不正确")
+        _raise_if_failed(renew, "续签证书")
+        site_name = (config.get("site_name") or "").strip() or order["domains"][0]
+        return {
+            "site_name": site_name,
+            "index": index,
+            "ssl_hash": "",
+            "direct": bool(renew.get("cert")),
+            "mode": "order",
+        }
+
+    site_id = config.get("site_id")
+    site_path = config.get("site_path")
+    if site_id and site_path:
+        site = {
+            "id": int(site_id),
+            "name": (config.get("site_name") or "").strip() or domain_name,
+            "path": site_path,
+        }
+    else:
+        sites = list_sites(ctx)
+        site = _resolve_site(sites, config.get("site_name", ""), domain_name)
+
     data = _post(ctx, "/acme", {
         "action": "apply_cert_api",
         "id": site["id"],
@@ -268,6 +417,8 @@ def start_renewal(domain_name: str, config: dict) -> dict:
         "auth_to": site["path"],
         "auto_wildcard": "0",
     })
+    if not isinstance(data, dict):
+        raise BaotaError("宝塔申请证书返回格式不正确")
     _raise_if_failed(data, "申请证书")
     index = data.get("index")
     direct = bool(data.get("cert") or data.get("private_key"))
@@ -279,6 +430,7 @@ def start_renewal(domain_name: str, config: dict) -> dict:
         "index": str(index) if index is not None else "",
         "ssl_hash": str(ssl_hash) if ssl_hash else "",
         "direct": direct,
+        "mode": "apply",
     }
 
 
