@@ -3,7 +3,7 @@
     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px">
       <n-h3 style="margin: 0">域名证书</n-h3>
       <n-space>
-        <n-button @click="openPanelModal">
+        <n-button v-if="isAdmin" @click="openPanelModal">
           <template #icon><n-icon><ServerOutline /></n-icon></template>
           宝塔面板
         </n-button>
@@ -122,7 +122,7 @@
                 />
                 <n-button :loading="loadingSites" :disabled="!editForm.panel_id" @click="handleLoadSites">读取站点</n-button>
               </n-space>
-              <span style="font-size: 12px; color: #999">留空时按域名自动匹配宝塔站点，也可手动填写站点名</span>
+              <span style="font-size: 12px; color: #999">留空时按域名精确匹配宝塔站点，也可手动填写站点名</span>
             </n-space>
           </n-form-item>
           <n-form-item label="自动续签">
@@ -162,14 +162,14 @@
             <n-input v-model:value="panelForm.api_key" type="password" show-password-on="click" placeholder="面板设置 → API 接口" />
           </n-form-item>
           <n-space>
-            <n-form-item label="忽略 TLS 校验">
+            <n-form-item label="校验面板 TLS 证书">
               <n-switch v-model:value="panelForm.verify_tls" />
             </n-form-item>
             <n-form-item label="启用">
               <n-switch v-model:value="panelForm.enabled" />
             </n-form-item>
           </n-space>
-          <div style="font-size: 12px; color: #999">面板使用 HTTP 时 API 密钥可能被窃听，建议使用 HTTPS 或仅在内网访问。</div>
+          <div style="font-size: 12px; color: #999">自签证书面板可关闭 TLS 校验；HTTP 面板的 API 密钥可能被窃听，建议使用 HTTPS 或仅在内网访问。</div>
         </n-form>
       </template>
       <template #footer>
@@ -194,6 +194,7 @@ import {
 import { fetchGroups } from '@/api/notification-groups'
 import { fetchBaotaPanels, createBaotaPanel, updateBaotaPanel, deleteBaotaPanel, testBaotaPanel } from '@/api/baota'
 import { fetchCertProviders } from '@/api/cert-providers'
+import { useAuthStore } from '@/stores/auth'
 import type { DomainInfo, DomainUpdate } from '@/api/domains'
 import type { BaotaPanel, BaotaPanelUpdate } from '@/api/baota'
 import type { CertProvider } from '@/api/cert-providers'
@@ -202,6 +203,8 @@ import type { DataTableColumn } from 'naive-ui'
 
 const message = useMessage()
 const dialog = useDialog()
+const auth = useAuthStore()
+const isAdmin = computed(() => auth.user?.role === 'admin')
 
 const domains = ref<DomainInfo[]>([])
 const loading = ref(false)
@@ -243,7 +246,15 @@ const editForm = ref({
   cert_auto_renew: false,
 })
 const renewingIds = ref<number[]>([])
-let renewTimer: ReturnType<typeof setInterval> | null = null
+const renewTimers: Record<number, ReturnType<typeof setInterval>> = {}
+
+function stopRenewPolling(id: number) {
+  const timer = renewTimers[id]
+  if (timer) {
+    clearInterval(timer)
+    delete renewTimers[id]
+  }
+}
 
 const showPanelModal = ref(false)
 const showPanelForm = ref(false)
@@ -339,24 +350,27 @@ const columns: DataTableColumn<DomainInfo>[] = [
   { title: '检测时间', key: 'last_checked_at', width: 170, render: (r) => formatTime(r.last_checked_at) },
   {
     title: '操作', key: 'actions', width: 230,
-    render: (row) => h(NSpace, { size: 'small' }, {
-      default: () => [
+    render: (row) => {
+      const actions = [
         h(NButton, { size: 'small', quaternary: true, onClick: () => handleRefresh(row.id) },
           { icon: () => h(NIcon, null, () => h(RefreshOutline)) }),
-        h(NButton, {
+      ]
+      if (isAdmin.value) {
+        actions.push(h(NButton, {
           size: 'small',
           quaternary: true,
           type: 'primary',
           loading: renewingIds.value.includes(row.id),
           disabled: row.cert_provider === 'none' || renewingIds.value.includes(row.id),
           onClick: () => handleRenew(row),
-        }, { default: () => '续签' }),
-        h(NButton, { size: 'small', quaternary: true, onClick: () => openEdit(row) },
-          { default: () => '编辑' }),
-        h(NButton, { size: 'small', quaternary: true, type: 'error', onClick: () => handleDelete(row) },
-          { default: () => '删除' }),
-      ],
-    }),
+        }, { default: () => '续签' }))
+        actions.push(h(NButton, { size: 'small', quaternary: true, onClick: () => openEdit(row) },
+          { default: () => '编辑' }))
+      }
+      actions.push(h(NButton, { size: 'small', quaternary: true, type: 'error', onClick: () => handleDelete(row) },
+        { default: () => '删除' }))
+      return h(NSpace, { size: 'small' }, { default: () => actions })
+    },
   },
 ]
 
@@ -383,13 +397,16 @@ const panelColumns: DataTableColumn<BaotaPanel>[] = [
 
 async function loadMeta() {
   try {
-    const [groupResp, panelResp, providerResp] = await Promise.all([
-      fetchGroups(), fetchBaotaPanels(), fetchCertProviders(),
-    ])
-    notificationGroups.value = groupResp.data
+    notificationGroups.value = (await fetchGroups()).data
+  } catch (_e) { /* ignore */ }
+  try {
+    const [panelResp, providerResp] = await Promise.all([fetchBaotaPanels(), fetchCertProviders()])
     panels.value = panelResp.data
     providers.value = providerResp.data
-  } catch (_e) { /* ignore */ }
+  } catch (_e) {
+    // 非管理员无法读取面板详情，但平台列表仍用于表单展示
+    try { providers.value = (await fetchCertProviders()).data } catch (_e2) { /* ignore */ }
+  }
 }
 
 async function loadDomains(silent = false) {
@@ -573,7 +590,7 @@ async function handleSaveEdit() {
       notification_group_id: editForm.value.notification_group_id,
       cert_provider: editForm.value.cert_provider,
       cert_provider_config: editForm.value.cert_provider === 'baota'
-        ? { panel_id: editForm.value.panel_id!, site_name: editForm.value.site_name.trim() }
+        ? { panel_id: editForm.value.panel_id!, site_name: (editForm.value.site_name || '').trim() }
         : {},
       cert_auto_renew: editForm.value.cert_provider === 'baota' ? editForm.value.cert_auto_renew : false,
     }
@@ -593,16 +610,17 @@ async function handleRenew(row: DomainInfo) {
   try {
     await renewDomainCert(row.id)
     message.info('已开始续签，请稍候')
-    renewingIds.value = [...renewingIds.value, row.id]
+    stopRenewPolling(row.id)
+    if (!renewingIds.value.includes(row.id)) {
+      renewingIds.value = [...renewingIds.value, row.id]
+    }
     const started = Date.now()
-    if (renewTimer) clearInterval(renewTimer)
-    renewTimer = setInterval(async () => {
+    renewTimers[row.id] = setInterval(async () => {
       await loadDomains(true)
       const current = domains.value.find((d) => d.id === row.id)
       const changed = current && current.last_renew_attempt_at !== beforeAttempt && current.last_renew_status !== 'pending'
       if (changed || Date.now() - started > 300000) {
-        if (renewTimer) clearInterval(renewTimer)
-        renewTimer = null
+        stopRenewPolling(row.id)
         renewingIds.value = renewingIds.value.filter((id) => id !== row.id)
         if (current?.last_renew_status === 'success') {
           message.success('证书续签成功')
@@ -718,6 +736,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (renewTimer) clearInterval(renewTimer)
+  Object.keys(renewTimers).forEach((id) => stopRenewPolling(Number(id)))
 })
 </script>

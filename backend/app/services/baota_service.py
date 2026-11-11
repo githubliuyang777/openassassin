@@ -42,7 +42,14 @@ def _sanitize(value) -> str:
 def _validate_url(value: str) -> str:
     base = (value or "").strip().rstrip("/")
     parsed = urlparse(base)
-    if parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.username or parsed.password:
+    if (
+        parsed.scheme not in ("http", "https")
+        or not parsed.netloc
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
         raise BaotaError("宝塔面板地址不合法")
     return base
 
@@ -133,7 +140,7 @@ def list_sites(ctx: dict) -> list[dict]:
     data = _post(ctx, "/data", {"action": "getData", "table": "sites", "limit": SITE_LIMIT, "p": 1})
     sites = _normalize_sites(data)
     if not sites:
-        raise BaotaError("无法读取宝塔站点列表（请检查面板版本/API 权限）")
+        raise BaotaError("无法读取宝塔站点列表（请检查 API 密钥、IP 白名单、面板版本或面板是否已有站点）")
     return sites
 
 
@@ -147,17 +154,13 @@ def _resolve_site(sites: list[dict], site_name: str, domain_name: str) -> dict:
             raise BaotaError(f"未找到宝塔站点: {site_name}")
         raise BaotaError(f"宝塔站点名不唯一: {site_name}")
 
-    domain = domain_name.lower()
-    candidates = {domain}
-    if domain.startswith("www."):
-        candidates.add(domain[4:])
-    else:
-        candidates.add(f"www.{domain}")
-    matches = [s for s in sites if s["name"].lower() in candidates]
+    # 仅按域名精确匹配，避免把 www 域名错误套用到 apex 站点的多域名证书上
+    domain = domain_name.strip().lower()
+    matches = [s for s in sites if s["name"].lower() == domain]
     if len(matches) == 1:
         return matches[0]
     if not matches:
-        raise BaotaError("未匹配到宝塔站点，请填写站点名")
+        raise BaotaError("未匹配到宝塔站点，请填写站点名（留空时按域名精确匹配）")
     raise BaotaError("匹配到多个宝塔站点，请填写站点名")
 
 
@@ -268,26 +271,36 @@ def start_renewal(domain_name: str, config: dict) -> dict:
     _raise_if_failed(data, "申请证书")
     index = data.get("index")
     direct = bool(data.get("cert") or data.get("private_key"))
+    ssl_hash = data.get("ssl_hash") or data.get("hash")
     if index is None and not direct:
         raise BaotaError(_sanitize(data.get("msg") or "宝塔未返回订单索引"))
     return {
         "site_name": site["name"],
         "index": str(index) if index is not None else "",
+        "ssl_hash": str(ssl_hash) if ssl_hash else "",
         "direct": direct,
     }
 
 
 def deploy_order(domain_name: str, config: dict, renewal: dict) -> None:
-    if not renewal.get("index"):
+    if not renewal.get("index") and not renewal.get("ssl_hash"):
         return
     db = SessionLocal()
     try:
         ctx = _panel_ctx(get_panel(db, int(config.get("panel_id"))))
     finally:
         db.close()
-    data = _post(ctx, "/acme", {
-        "action": "SetCertToSite",
-        "index": renewal["index"],
-        "siteName": renewal["site_name"],
-    })
+
+    if renewal.get("ssl_hash") and not renewal.get("index"):
+        data = _post(ctx, "/ssl", {
+            "action": "SetCertToSite",
+            "ssl_hash": renewal["ssl_hash"],
+            "siteName": renewal["site_name"],
+        })
+    else:
+        data = _post(ctx, "/acme", {
+            "action": "SetCertToSite",
+            "index": renewal["index"],
+            "siteName": renewal["site_name"],
+        })
     _raise_if_failed(data, "部署证书")

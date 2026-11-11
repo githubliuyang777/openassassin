@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.middleware.auth_middleware import get_current_admin_user, get_current_user
+from app.middleware.auth_middleware import get_current_admin_user
 from app.models.baota_panel import BaotaPanel
 from app.schemas.baota import (
     BaotaPanelCreate,
@@ -31,7 +31,7 @@ def _panel_response(panel: BaotaPanel) -> dict:
 @router.get("/panels", response_model=list[BaotaPanelResponse])
 def list_panels(
     db: Session = Depends(get_db),
-    _user: dict = Depends(get_current_user),
+    _user: dict = Depends(get_current_admin_user),
 ):
     panels = db.query(BaotaPanel).order_by(BaotaPanel.id.asc()).all()
     return [_panel_response(panel) for panel in panels]

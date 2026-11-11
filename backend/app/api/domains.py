@@ -68,7 +68,7 @@ def update_domain(
     domain_id: int,
     body: DomainUpdate,
     db: Session = Depends(get_db),
-    _user: dict = Depends(get_current_user),
+    _user: dict = Depends(get_current_admin_user),
 ):
     dom = db.query(domain_service.Domain).filter(domain_service.Domain.id == domain_id).first()
     if not dom:

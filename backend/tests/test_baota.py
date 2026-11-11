@@ -63,6 +63,37 @@ class TestSignature:
     def test_request_token_vector(self):
         assert baota_service._sign("test-key", 1700000000) == "51e1827b3668b612a4fa76e79caa10d0"
 
+    def test_sanitize_redacts_secrets(self):
+        pem = "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----"
+        assert "PRIVATE KEY" not in baota_service._sanitize(pem)
+        text = baota_service._sanitize('{"private_key": "abc", "msg": "x"}')
+        assert "abc" not in text
+
+
+class TestClientRequest:
+    def test_post_signs_form_without_key(self, db_session, monkeypatch):
+        panel = _panel(db_session)
+        captured = {}
+
+        class FakeResponse:
+            status_code = 200
+
+            def json(self):
+                return {"status": True}
+
+        def fake_post(url, data, timeout, verify, follow_redirects):
+            captured.update({"url": url, "data": data})
+            return FakeResponse()
+
+        monkeypatch.setattr(baota_service.httpx, "post", fake_post)
+        baota_service._post(baota_service._panel_ctx(panel), "/acme", {"action": "test"})
+
+        assert captured["url"] == "https://panel.example.com:8888/acme"
+        assert captured["data"]["action"] == "test"
+        assert "request_time" in captured["data"]
+        assert "request_token" in captured["data"]
+        assert "test-key" not in str(captured["data"])
+
 
 class TestSiteParsing:
     def test_normalize_new_response(self):
@@ -82,17 +113,19 @@ class TestSiteParsing:
             "data": [{"id": 1, "name": "example.com"}],
         }) == []
 
-    def test_resolve_site_exact_and_www(self):
+    def test_resolve_site_exact_and_explicit(self):
         sites = [{"id": 1, "name": "example.com", "path": "/www/example"}]
-        assert baota_service._resolve_site(sites, "", "www.example.com")["id"] == 1
+        assert baota_service._resolve_site(sites, "", "example.com")["id"] == 1
         assert baota_service._resolve_site(sites, "Example.com", "other.com")["id"] == 1
+        with pytest.raises(baota_service.BaotaError):
+            baota_service._resolve_site(sites, "", "www.example.com")
 
     def test_resolve_site_missing_or_ambiguous(self):
         with pytest.raises(baota_service.BaotaError):
             baota_service._resolve_site([], "", "example.com")
         sites = [
             {"id": 1, "name": "example.com", "path": "/www/example"},
-            {"id": 2, "name": "www.example.com", "path": "/www/www"},
+            {"id": 2, "name": "example.com", "path": "/www/example-2"},
         ]
         with pytest.raises(baota_service.BaotaError):
             baota_service._resolve_site(sites, "", "example.com")
@@ -195,6 +228,29 @@ class TestPanelAPI:
         assert resp.json()["sites"] == [{"id": 1, "name": "example.com"}]
 
 
+class TestDeployOrder:
+    def test_ssl_hash_deploys_via_ssl_endpoint(self, db_session, monkeypatch):
+        panel = _panel(db_session)
+        captured = {}
+
+        def fake_post(ctx, path, data):
+            captured.update({"path": path, "data": data})
+            return {"status": True}
+
+        monkeypatch.setattr(baota_service, "_post", fake_post)
+        baota_service.deploy_order(
+            "example.com",
+            {"panel_id": panel.id},
+            {"site_name": "example.com", "index": "", "ssl_hash": "abc123", "direct": True},
+        )
+        assert captured["path"] == "/ssl"
+        assert captured["data"] == {
+            "action": "SetCertToSite",
+            "ssl_hash": "abc123",
+            "siteName": "example.com",
+        }
+
+
 class TestDomainUpdateAPI:
     def test_update_provider_config(self, client, auth_headers, db_session):
         panel = _panel(db_session)
@@ -239,6 +295,36 @@ class TestDomainUpdateAPI:
         resp = client.put(
             f"/api/v1/domains/{dom.id}",
             json={"cert_provider": "unknown"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 422
+
+    def test_update_requires_admin(self, client, db_session):
+        user = User(username="viewer2", password_hash=hash_password("x"), role="user")
+        db_session.add(user)
+        db_session.commit()
+        dom = _domain(db_session, cert_provider="none", cert_auto_renew=False)
+        token = create_token(user.id, user.username, user.role)
+        resp = client.put(
+            f"/api/v1/domains/{dom.id}",
+            json={"port": 8443},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 403
+
+    def test_empty_provider_normalized(self, client, auth_headers, db_session):
+        dom = _domain(db_session, cert_provider="none", cert_auto_renew=False)
+        resp = client.put(
+            f"/api/v1/domains/{dom.id}",
+            json={"cert_provider": ""},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["cert_provider"] == "none"
+
+        resp = client.put(
+            f"/api/v1/domains/{dom.id}",
+            json={"cert_provider": "", "cert_auto_renew": True},
             headers=auth_headers,
         )
         assert resp.status_code == 422
@@ -306,6 +392,33 @@ class TestRenewalService:
         assert dom.last_renew_status == "failed"
         assert "API Key 无效" in dom.last_renew_error
         assert dom.last_renew_attempt_at is not None
+
+    def test_null_expiry_is_auto_renew_candidate(self, db_session, monkeypatch):
+        panel = _panel(db_session)
+        dom = _domain(db_session, panel_id=panel.id, ssl_not_after=None)
+        called = []
+        monkeypatch.setattr(
+            cert_renew_service, "_renew_domain",
+            lambda domain_id, force=False: called.append(domain_id) or 1,
+        )
+
+        assert cert_renew_service.auto_renew_domains() == 1
+        assert called == [dom.id]
+
+    def test_stale_pending_marked_failed(self, db_session):
+        panel = _panel(db_session)
+        dom = _domain(
+            db_session,
+            panel_id=panel.id,
+            last_renew_status="pending",
+            last_renew_attempt_at=china_now() - timedelta(hours=1),
+        )
+
+        assert cert_renew_service._renew_domain(dom.id, force=False) == 0
+        db_session.expire_all()
+        dom = db_session.get(Domain, dom.id)
+        assert dom.last_renew_status == "failed"
+        assert "上次续签未完成" in dom.last_renew_error
 
     def test_cooldown_skips_auto_renew(self, db_session, monkeypatch):
         panel = _panel(db_session)

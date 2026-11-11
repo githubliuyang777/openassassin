@@ -156,6 +156,8 @@ def update_domain(db: Session, dom: Domain, data) -> Domain:
         if "cert_provider" in fields and data.cert_provider is not None
         else old_provider
     )
+    if provider in ("", None):
+        provider = "none"
     config = (
         data.cert_provider_config
         if "cert_provider_config" in fields and data.cert_provider_config is not None

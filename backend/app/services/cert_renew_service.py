@@ -125,9 +125,13 @@ def _renew_domain(domain_id: int, force: bool = False) -> int:
             if not auto_renew:
                 return 0
             now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-            if not old_after or old_after > now_utc + timedelta(days=settings.alert_before_days):
+            if old_after is not None and old_after > now_utc + timedelta(days=settings.alert_before_days):
                 return 0
             now_local = china_now()
+            if last_attempt and (dom.last_renew_status or "") == "pending" and now_local - last_attempt > timedelta(minutes=15):
+                dom.last_renew_status = "failed"
+                dom.last_renew_error = "上次续签未完成（进程中断或超时）"
+                db.commit()
             if last_attempt and now_local - last_attempt < timedelta(hours=RENEW_COOLDOWN_HOURS):
                 return 0
 
@@ -149,7 +153,7 @@ def _renew_domain(domain_id: int, force: bool = False) -> int:
     try:
         renewal = provider.start_renewal(domain_name, config)
         info = _poll_for_new_cert(domain_name, port, old_before, old_after, TLS_POLL_SECONDS)
-        if info is None and renewal.get("index"):
+        if info is None and (renewal.get("index") or renewal.get("ssl_hash")):
             provider.deploy(domain_name, config, renewal)
             info = _poll_for_new_cert(domain_name, port, old_before, old_after, DEPLOY_POLL_SECONDS)
 
@@ -158,7 +162,10 @@ def _renew_domain(domain_id: int, force: bool = False) -> int:
             _notify(domain_id, True, f"新证书到期时间: {info['ssl_not_after']:%Y-%m-%d %H:%M:%S}")
             return 1
 
-        message = "已触发申请但未观察到新证书（可能等待签发、CDN 代理或多节点未同步）"
+        if renewal.get("direct") and not renewal.get("index") and not renewal.get("ssl_hash"):
+            message = "宝塔返回了内联证书但未提供订单/证书 hash，无法自动部署；请检查面板版本或改用订单模式"
+        else:
+            message = "已触发申请但未观察到新证书（可能等待签发、CDN 代理或多节点未同步）"
         _set_status(domain_id, "failed", message)
         _notify(domain_id, False, message)
         return 0
@@ -196,8 +203,7 @@ def auto_renew_domains() -> int:
                     Domain.cert_auto_renew.is_(True),
                     Domain.cert_provider.isnot(None),
                     Domain.cert_provider != "none",
-                    Domain.ssl_not_after.isnot(None),
-                    Domain.ssl_not_after <= threshold,
+                    (Domain.ssl_not_after.is_(None)) | (Domain.ssl_not_after <= threshold),
                 ).all()
             ]
         finally:
