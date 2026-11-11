@@ -7,8 +7,15 @@ from pydantic import BaseModel, Field, field_validator
 def _validate_panel_url(value: str) -> str:
     value = (value or "").strip().rstrip("/")
     parsed = urlparse(value)
-    if parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.username or parsed.password:
-        raise ValueError("面板地址必须为 http(s) URL，且不能包含用户名密码")
+    if (
+        parsed.scheme not in ("http", "https")
+        or not parsed.netloc
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("面板地址必须为 http(s) URL，且不能包含用户名密码、查询参数或片段")
     return value
 
 
