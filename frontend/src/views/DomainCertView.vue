@@ -730,7 +730,10 @@ async function handleTestPanel(panel: BaotaPanel) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  if (!auth.user) {
+    try { await auth.fetchMe() } catch (_e) { /* ignore */ }
+  }
   loadMeta()
   loadDomains()
 })
