@@ -5,7 +5,28 @@ from app.config import settings
 from app.models.credential import Credential
 from app.models.domain import Domain
 from app.models.domain_whois import DomainWhois
+from app.models.host import Host
 from app.models.subscription import Subscription, SubscriptionAlert
+
+
+def _make_host(db, **overrides):
+    data = {
+        "name": "web-1",
+        "hostname": "10.0.0.10",
+        "username": "root",
+        "alert_active": True,
+        "alert_enabled": True,
+        "is_online": True,
+        "cpu_usage": 95.0,
+        "mem_usage": 60.0,
+        "disk_usage": 91.0,
+    }
+    data.update(overrides)
+    host = Host(**data)
+    db.add(host)
+    db.commit()
+    db.refresh(host)
+    return host
 
 
 class TestAlertsUnauthenticated:
@@ -192,6 +213,36 @@ class TestAlertsSubscription:
 
         resp = client.get("/api/v1/alerts/summary", headers=auth_headers)
         assert resp.json() == []
+
+
+class TestAlertsHost:
+    def test_active_host_alert(self, client, auth_headers, db_session):
+        host = _make_host(db_session)
+
+        resp = client.get("/api/v1/alerts/summary", headers=auth_headers)
+        data = [item for item in resp.json() if item["source"] == "host"]
+        assert len(data) == 1
+        assert data[0]["id"] == f"host-{host.id}"
+        assert data[0]["severity"] == "danger"
+        assert data[0]["link"] == f"/hosts/{host.id}"
+        assert "web-1" in data[0]["message"]
+        assert "CPU 95%" in data[0]["message"]
+        assert "磁盘 91%" in data[0]["message"]
+
+    def test_offline_host_still_shown_with_note(self, client, auth_headers, db_session):
+        _make_host(db_session, is_online=False)
+
+        resp = client.get("/api/v1/alerts/summary", headers=auth_headers)
+        data = [item for item in resp.json() if item["source"] == "host"]
+        assert len(data) == 1
+        assert "离线" in data[0]["message"]
+
+    def test_inactive_or_disabled_host_excluded(self, client, auth_headers, db_session):
+        _make_host(db_session, name="recovered", alert_active=False)
+        _make_host(db_session, name="muted", alert_enabled=False)
+
+        resp = client.get("/api/v1/alerts/summary", headers=auth_headers)
+        assert [item for item in resp.json() if item["source"] == "host"] == []
 
 
 class TestAlertsSorting:

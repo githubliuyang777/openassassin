@@ -172,13 +172,25 @@ function getCredentialLabel(credId: number | null) {
   return cred ? `${cred.name}` : '-'
 }
 
+function renderUsage(field: 'cpu_usage' | 'mem_usage' | 'disk_usage') {
+  return (r: Host) => {
+    const pct = r[field] || 0
+    const color = pct >= 90 ? '#d03050' : pct >= 70 ? '#f0a020' : '#18a058'
+    return h('div', { style: 'display:flex;align-items:center;gap:6px' }, [
+      h(NProgress, { percentage: pct, color, height: 6, style: 'flex:1;min-width:50px', showIndicator: false, borderRadius: 3 }),
+      h('span', { style: 'font-size:12px;white-space:nowrap' }, `${pct}%`),
+    ])
+  }
+}
+
 const columns: DataTableColumn<Host>[] = [
   { title: '名称', key: 'name', width: 120, render: (r) => h('a', { style: 'color:#2080f0;cursor:pointer', onClick: () => router.push(`/hosts/${r.id}`) }, r.name) },
   { title: '主机地址', key: 'hostname', width: 150, render: (r) => `${r.hostname}:${r.port}` },
   { title: '用户名', key: 'username', width: 70 },
   { title: '在线', key: 'is_online', width: 55, render: (r) => h(NTag, { type: r.is_online ? 'success' : 'default', size: 'small', round: true }, () => r.is_online ? '在线' : '离线') },
-  { title: 'CPU', key: 'cpu_usage', width: 100, render: (r) => { const pct = r.cpu_usage || 0; const color = pct >= 90 ? '#d03050' : pct >= 70 ? '#f0a020' : '#18a058'; return h('div', { style: 'display:flex;align-items:center;gap:6px' }, [h(NProgress, { percentage: pct, color, height: 6, style: 'flex:1;min-width:50px', showIndicator: false, borderRaius: 3 }), h('span', { style: 'font-size:12px;white-space:nowrap' }, `${pct}%`)]) } },
-  { title: '内存', key: 'mem_usage', width: 100, render: (r) => { const pct = r.mem_usage || 0; const color = pct >= 90 ? '#d03050' : pct >= 70 ? '#f0a020' : '#18a058'; return h('div', { style: 'display:flex;align-items:center;gap:6px' }, [h(NProgress, { percentage: pct, color, height: 6, style: 'flex:1;min-width:50px', showIndicator: false, borderRaius: 3 }), h('span', { style: 'font-size:12px;white-space:nowrap' }, `${pct}%`)]) } },
+  { title: 'CPU', key: 'cpu_usage', width: 100, render: renderUsage('cpu_usage') },
+  { title: '内存', key: 'mem_usage', width: 100, render: renderUsage('mem_usage') },
+  { title: '磁盘', key: 'disk_usage', width: 100, render: renderUsage('disk_usage') },
   { title: '上报', key: 'last_seen_at', width: 80, render: (r) => h('span', { style: 'font-size:12px' }, relativeTime(r.last_seen_at)) },
   { title: '凭证', key: 'credential_id', width: 100, render: (r) => getCredentialLabel(r.credential_id) },
   { title: '更新时间', key: 'updated_at', width: 140, render: (r) => formatTime(r.updated_at) },
