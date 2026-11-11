@@ -10,7 +10,7 @@ from app.middleware.audit_middleware import AuditMiddleware
 from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.services.auth_service import get_or_create_admin
-from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors, notification_groups, notification_recipients, dingtalk, agents, overview, system, vulnerabilities
+from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors, notification_groups, notification_recipients, dingtalk, agents, overview, system, vulnerabilities, cert_providers, baota
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,12 @@ def _migrate_domains_table():
         ("alert_enabled", "BOOLEAN DEFAULT 1"),
         ("last_checked_at", "DATETIME"),
         ("notification_group_id", "INTEGER"),
+        ("cert_provider", "VARCHAR(32) DEFAULT 'none'"),
+        ("cert_provider_config", "TEXT DEFAULT '{}'"),
+        ("cert_auto_renew", "BOOLEAN DEFAULT 0"),
+        ("last_renew_attempt_at", "DATETIME"),
+        ("last_renew_status", "VARCHAR(32) DEFAULT ''"),
+        ("last_renew_error", "VARCHAR(512) DEFAULT ''"),
     ])
 
 
@@ -128,6 +134,9 @@ def _repair_stale_data():
             ("credentials", "alert_enabled", "1"),
             ("subscriptions", "alert_enabled", "1"),
             ("credentials", "type", "'generic'"),
+            ("domains", "cert_provider", "'none'"),
+            ("domains", "cert_provider_config", "'{}'"),
+            ("domains", "cert_auto_renew", "0"),
             ("users", "totp_enabled", "0"),
             ("users", "totp_failed_attempts", "0"),
             ("users", "backup_codes_used", "0"),
@@ -144,6 +153,8 @@ def _repair_stale_data():
             ("audit_logs", "user_agent"),
             ("audit_logs", "resource_type"),
             ("audit_logs", "ip_location"),
+            ("domains", "last_renew_status"),
+            ("domains", "last_renew_error"),
         ]:
             try:
                 conn.execute(text(f"UPDATE {table} SET {col} = '' WHERE {col} IS NULL"))
@@ -333,6 +344,23 @@ async def _vulnerability_check_loop():
             logger.warning("vulnerability daily check failed", exc_info=True)
 
 
+async def _domain_cert_loop():
+    """Background task: refresh certificates and run provider auto-renewal hourly."""
+    while True:
+        await asyncio.sleep(settings.alert_check_interval_minutes * 60)
+        try:
+            from app.services.cert_renew_service import auto_renew_domains
+            from app.services.domain_service import refresh_all_domains
+            db = SessionLocal()
+            try:
+                await asyncio.to_thread(refresh_all_domains, db)
+            finally:
+                db.close()
+            await asyncio.to_thread(auto_renew_domains)
+        except Exception:
+            logger.warning("domain certificate check failed", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     os.makedirs("data", exist_ok=True)
@@ -356,6 +384,7 @@ async def lifespan(app: FastAPI):
     site_task = asyncio.create_task(_site_monitor_check_loop())
     agent_task = asyncio.create_task(_host_agent_check_loop())
     vuln_task = asyncio.create_task(_vulnerability_check_loop())
+    domain_task = asyncio.create_task(_domain_cert_loop())
     yield
     task.cancel()
     cleanup_task.cancel()
@@ -363,6 +392,7 @@ async def lifespan(app: FastAPI):
     site_task.cancel()
     agent_task.cancel()
     vuln_task.cancel()
+    domain_task.cancel()
 
 
 API_VERSION = "v1"  # API 契约版本，不是构建版本；构建版本只通过鉴权接口返回
@@ -408,6 +438,8 @@ app.include_router(agents.router, prefix="/api/v1")
 app.include_router(overview.router, prefix="/api/v1")
 app.include_router(system.router, prefix="/api/v1")
 app.include_router(vulnerabilities.router, prefix="/api/v1")
+app.include_router(cert_providers.router, prefix="/api/v1")
+app.include_router(baota.router, prefix="/api/v1")
 
 
 @app.get("/api/health")
