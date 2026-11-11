@@ -32,10 +32,19 @@ export interface BaotaSite {
   name: string
 }
 
+export interface BaotaOrder {
+  index: string
+  domains: string[]
+  status: string
+  cert_timeout: number
+  auth_type: string
+}
+
 export interface BaotaTestResult {
   ok: boolean
   message: string
   sites: BaotaSite[]
+  orders: BaotaOrder[]
 }
 
 export function fetchBaotaPanels() {

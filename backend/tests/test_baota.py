@@ -219,6 +219,7 @@ class TestPanelAPI:
 
     def test_test_endpoint_returns_sites_without_paths(self, client, auth_headers, db_session, monkeypatch):
         panel = _panel(db_session)
+        monkeypatch.setattr(baota_service, "get_orders", lambda ctx: [])
         monkeypatch.setattr(
             baota_service, "list_sites",
             lambda ctx: [{"id": 1, "name": "example.com", "path": "/www/example"}],
@@ -226,6 +227,136 @@ class TestPanelAPI:
         resp = client.post(f"/api/v1/baota/panels/{panel.id}/test", headers=auth_headers)
         assert resp.status_code == 200
         assert resp.json()["sites"] == [{"id": 1, "name": "example.com"}]
+        assert resp.json()["orders"] == []
+
+    def test_test_endpoint_orders_when_site_list_fails(self, client, auth_headers, db_session, monkeypatch):
+        panel = _panel(db_session)
+        monkeypatch.setattr(
+            baota_service, "get_orders",
+            lambda ctx: [{
+                "index": "abc123",
+                "domains": ["example.com"],
+                "status": "valid",
+                "cert_timeout": 123,
+                "auth_type": "http",
+            }],
+        )
+
+        def _no_sites(ctx):
+            raise baota_service.BaotaError("站点列表不可用")
+
+        monkeypatch.setattr(baota_service, "list_sites", _no_sites)
+        resp = client.post(f"/api/v1/baota/panels/{panel.id}/test", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["sites"] == []
+        assert body["orders"][0]["index"] == "abc123"
+
+
+class TestOrders:
+    def test_get_orders_parses_list(self, monkeypatch):
+        captured = {}
+
+        def fake_post(ctx, path, data, raw=False):
+            captured.update({"path": path, "data": data, "raw": raw})
+            return [{
+                "index": "abc123",
+                "domains": ["example.com"],
+                "status": "valid",
+                "cert_timeout": 123,
+                "auth_type": "http",
+            }]
+
+        monkeypatch.setattr(baota_service, "_post", fake_post)
+        orders = baota_service.get_orders({"url": "https://p", "encrypted_api_key": "x", "verify_tls": True})
+        assert orders == [{
+            "index": "abc123",
+            "domains": ["example.com"],
+            "status": "valid",
+            "cert_timeout": 123,
+            "auth_type": "http",
+        }]
+        assert captured["data"] == {"action": "get_orders"}
+        assert captured["raw"] is True
+
+    def test_select_order_prefers_latest_valid(self):
+        orders = [
+            {"index": "old", "domains": ["example.com"], "status": "valid", "cert_timeout": 100},
+            {"index": "new", "domains": ["example.com"], "status": "valid", "cert_timeout": 200},
+            {"index": "pending", "domains": ["example.com"], "status": "pending", "cert_timeout": 300},
+        ]
+        assert baota_service._select_order(orders, "example.com")["index"] == "new"
+        assert baota_service._select_order(orders, "www.example.com")["index"] == "new"
+        with pytest.raises(baota_service.BaotaError):
+            baota_service._select_order(orders, "example.com", "missing")
+
+    def test_start_renewal_uses_existing_order(self, db_session, monkeypatch):
+        panel = _panel(db_session)
+        orders = [
+            {"index": "old", "domains": ["example.com"], "status": "valid", "cert_timeout": 100},
+            {"index": "new", "domains": ["example.com"], "status": "valid", "cert_timeout": 200},
+        ]
+        captured = {}
+
+        def fake_post(ctx, path, data, raw=False):
+            captured.update({"path": path, "data": data})
+            return {"status": True, "cert": "pem", "cert_timeout": 300}
+
+        monkeypatch.setattr(baota_service, "get_orders", lambda ctx: orders)
+        monkeypatch.setattr(baota_service, "_post", fake_post)
+        result = baota_service.start_renewal("example.com", {
+            "panel_id": panel.id,
+            "site_name": "",
+            "order_index": "",
+            "site_id": None,
+            "site_path": "",
+        })
+        assert result["index"] == "new"
+        assert result["site_name"] == "example.com"
+        assert result["mode"] == "order"
+        assert captured["data"] == {"action": "renew_cert", "index": "new"}
+
+    def test_start_renewal_manual_site_when_no_order(self, db_session, monkeypatch):
+        panel = _panel(db_session)
+        captured = {}
+
+        def fake_post(ctx, path, data, raw=False):
+            captured.update({"path": path, "data": data})
+            return {"status": True, "index": "idx"}
+
+        def _no_sites(ctx):
+            raise AssertionError("should not list sites")
+
+        monkeypatch.setattr(baota_service, "get_orders", lambda ctx: [])
+        monkeypatch.setattr(baota_service, "_post", fake_post)
+        monkeypatch.setattr(baota_service, "list_sites", _no_sites)
+        result = baota_service.start_renewal("example.com", {
+            "panel_id": panel.id,
+            "site_name": "",
+            "order_index": "",
+            "site_id": 7,
+            "site_path": "/www/example",
+        })
+        assert result["mode"] == "apply"
+        assert captured["data"]["id"] == 7
+        assert captured["data"]["auth_to"] == "/www/example"
+
+    def test_validate_advanced_fields(self, db_session):
+        panel = _panel(db_session)
+        config = baota_service.validate_domain_config(db_session, {
+            "panel_id": panel.id,
+            "site_name": "",
+            "order_index": "abc123",
+            "site_id": 7,
+            "site_path": "/www/example",
+        })
+        assert config["order_index"] == "abc123"
+        assert config["site_id"] == 7
+        assert config["site_path"] == "/www/example"
+        with pytest.raises(ValueError):
+            baota_service.validate_domain_config(db_session, {
+                "panel_id": panel.id, "site_path": "relative",
+            })
 
 
 class TestDeployOrder:
