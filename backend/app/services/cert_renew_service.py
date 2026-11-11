@@ -162,7 +162,9 @@ def _renew_domain(domain_id: int, force: bool = False) -> int:
             _notify(domain_id, True, f"新证书到期时间: {info['ssl_not_after']:%Y-%m-%d %H:%M:%S}")
             return 1
 
-        if renewal.get("direct") and not renewal.get("index") and not renewal.get("ssl_hash"):
+        if renewal.get("mode") == "docker":
+            message = "Docker/反向代理项目已重新申请，但未观察到新证书；请检查宝塔 Docker 项目是否已重载证书"
+        elif renewal.get("direct") and not renewal.get("index") and not renewal.get("ssl_hash"):
             message = "宝塔返回了内联证书但未提供订单/证书 hash，无法自动部署；请检查面板版本或改用订单模式"
         else:
             message = "已触发申请但未观察到新证书（可能等待签发、CDN 代理或多节点未同步）"

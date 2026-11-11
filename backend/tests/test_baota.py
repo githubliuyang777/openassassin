@@ -341,6 +341,65 @@ class TestOrders:
         assert captured["data"]["id"] == 7
         assert captured["data"]["auth_to"] == "/www/example"
 
+    def test_start_renewal_docker_mode(self, db_session, monkeypatch):
+        panel = _panel(db_session)
+        captured = {}
+
+        def fake_post(ctx, path, data, raw=False):
+            captured.update({"path": path, "data": data})
+            return {
+                "status": True,
+                "msg": "申请成功!",
+                "cert": "pem",
+                "private_key": "key",
+                "cert_timeout": 300,
+            }
+
+        def _unexpected(ctx):
+            raise AssertionError("should not read orders in docker mode")
+
+        monkeypatch.setattr(baota_service, "get_orders", _unexpected)
+        monkeypatch.setattr(baota_service, "_post", fake_post)
+        result = baota_service.start_renewal("dashboard.example.com", {
+            "panel_id": panel.id,
+            "site_name": "",
+            "mode": "docker",
+            "docker_id": 1,
+            "order_index": "",
+            "site_id": None,
+            "site_path": "",
+        })
+        assert result["mode"] == "docker"
+        assert result["direct"] is True
+        assert result["index"] == ""
+        assert "cert" not in result and "private_key" not in result
+        assert captured["path"] == "/mod/docker/com/apply_cert_api"
+        assert captured["data"] == {
+            "domains": '["dashboard.example.com"]',
+            "auth_type": "http",
+            "auth_to": '["dashboard.example.com"]',
+            "auto_wildcard": "0",
+            "id": 1,
+            "ca": "letsencrypt",
+            "cert_algorithm": "rsa4096",
+            "site_name": "dashboard.example.com",
+        }
+
+    def test_validate_docker_mode(self, db_session):
+        panel = _panel(db_session)
+        config = baota_service.validate_domain_config(db_session, {
+            "panel_id": panel.id,
+            "mode": "docker",
+            "docker_id": 1,
+            "site_name": "dashboard.example.com",
+        })
+        assert config["mode"] == "docker"
+        assert config["docker_id"] == 1
+        with pytest.raises(ValueError):
+            baota_service.validate_domain_config(db_session, {
+                "panel_id": panel.id, "mode": "docker",
+            })
+
     def test_validate_advanced_fields(self, db_session):
         panel = _panel(db_session)
         config = baota_service.validate_domain_config(db_session, {

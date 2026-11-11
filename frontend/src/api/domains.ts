@@ -3,6 +3,8 @@ import { api } from './client'
 export interface DomainProviderConfig {
   panel_id?: number
   site_name?: string
+  mode?: string
+  docker_id?: number | null
   order_index?: string
   site_id?: number | null
   site_path?: string
