@@ -6,6 +6,7 @@ from app.config import settings
 from app.models.credential import Credential
 from app.models.domain import Domain
 from app.models.domain_whois import DomainWhois
+from app.models.host import Host
 from app.models.subscription import SubscriptionAlert, Subscription
 from app.models.site_monitor import SiteMonitor
 from app.models.vulnerability import VulnerabilityComponent, VulnerabilityFinding
@@ -21,6 +22,7 @@ SOURCE_DOMAIN_WHOIS = "domain_whois"
 SOURCE_SUBSCRIPTION = "subscription"
 SOURCE_SITE_MONITOR = "site_monitor"
 SOURCE_VULNERABILITY = "vulnerability"
+SOURCE_HOST = "host"
 
 SEVERITY_ORDER = {SEVERITY_DANGER: 0, SEVERITY_WARNING: 1, SEVERITY_INFO: 2}
 
@@ -166,6 +168,31 @@ def get_all_alerts(db: Session) -> list[dict]:
             "message": f"{len(component_ids)} 个组件存在已知漏洞，需要升级",
             "severity": SEVERITY_DANGER if has_high else SEVERITY_WARNING,
             "link": "/vulnerabilities",
+            "days_remaining": 0,
+        })
+
+    # 7. Host resource alerts (state is cleared only by a below-threshold report)
+    host_rows = (
+        db.query(
+            Host.id, Host.name, Host.is_online,
+            Host.cpu_usage, Host.mem_usage, Host.disk_usage,
+        )
+        .filter(Host.alert_active.is_(True), Host.alert_enabled.is_(True))
+        .all()
+    )
+    for host_id, host_name, is_online, cpu, mem, disk in host_rows:
+        message = (
+            f"主机 {host_name} 资源使用率持续超阈值"
+            f"（CPU {int(cpu or 0)}% / 内存 {int(mem or 0)}% / 磁盘 {int(disk or 0)}%）"
+        )
+        if not is_online:
+            message += "（离线，最后上报状态）"
+        alerts.append({
+            "id": f"host-{host_id}",
+            "source": SOURCE_HOST,
+            "message": message,
+            "severity": SEVERITY_DANGER,
+            "link": f"/hosts/{host_id}",
             "days_remaining": 0,
         })
 
