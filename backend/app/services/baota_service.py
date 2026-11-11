@@ -259,6 +259,23 @@ def validate_domain_config(db: Session, config: dict) -> dict:
     if len(site_name) > 128:
         raise ValueError("站点名过长")
 
+    mode = str(config.get("mode") or "auto").strip().lower()
+    if mode not in ("auto", "docker"):
+        raise ValueError("续签方式不正确")
+
+    docker_id = config.get("docker_id")
+    if docker_id in (None, ""):
+        docker_id = None
+    else:
+        try:
+            docker_id = int(docker_id)
+        except (TypeError, ValueError):
+            raise ValueError("Docker 项目 ID 必须是数字")
+        if docker_id <= 0:
+            raise ValueError("Docker 项目 ID 不正确")
+    if mode == "docker" and not docker_id:
+        raise ValueError("Docker 模式需要填写 Docker 项目 ID")
+
     order_index = str(config.get("order_index") or "").strip()
     if order_index and not re.match(r"^[A-Za-z0-9._-]{1,64}$", order_index):
         raise ValueError("ACME 订单 ID 格式不正确")
@@ -284,6 +301,8 @@ def validate_domain_config(db: Session, config: dict) -> dict:
     return {
         "panel_id": panel_id,
         "site_name": site_name,
+        "mode": mode,
+        "docker_id": docker_id,
         "order_index": order_index,
         "site_id": site_id,
         "site_path": site_path,
@@ -372,6 +391,30 @@ def start_renewal(domain_name: str, config: dict) -> dict:
         ctx = _panel_ctx(get_panel(db, panel_id))
     finally:
         db.close()
+
+    if config.get("mode") == "docker":
+        docker_id = int(config["docker_id"])
+        site_name = (config.get("site_name") or "").strip() or domain_name
+        data = _post(ctx, "/mod/docker/com/apply_cert_api", {
+            "domains": json.dumps([domain_name]),
+            "auth_type": "http",
+            "auth_to": json.dumps([site_name]),
+            "auto_wildcard": "0",
+            "id": docker_id,
+            "ca": "letsencrypt",
+            "cert_algorithm": "rsa4096",
+            "site_name": site_name,
+        })
+        if not isinstance(data, dict):
+            raise BaotaError("宝塔 Docker 证书接口返回格式不正确")
+        _raise_if_failed(data, "重新申请证书")
+        return {
+            "site_name": site_name,
+            "index": "",
+            "ssl_hash": "",
+            "direct": bool(data.get("cert") or data.get("private_key")),
+            "mode": "docker",
+        }
 
     order_index = config.get("order_index", "")
     if order_index:

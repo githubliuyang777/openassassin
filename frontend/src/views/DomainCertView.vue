@@ -108,7 +108,10 @@
           <n-form-item label="宝塔面板">
             <n-select v-model:value="editForm.panel_id" :options="panelOptions" placeholder="选择宝塔面板" @update:value="onPanelChange" />
           </n-form-item>
-          <n-form-item label="部署站点名（可选）">
+          <n-form-item label="续签方式">
+            <n-select v-model:value="editForm.renew_mode" :options="renewModeOptions" />
+          </n-form-item>
+          <n-form-item :label="editForm.renew_mode === 'docker' ? 'Docker 站点名（可选）' : '部署站点名（可选）'">
             <n-space vertical style="width: 100%">
               <n-space>
                 <n-select
@@ -117,25 +120,39 @@
                   filterable
                   tag
                   clearable
-                  placeholder="留空使用 ACME 订单域名"
+                  :placeholder="editForm.renew_mode === 'docker' ? '留空使用当前域名' : '留空使用 ACME 订单域名'"
                   style="min-width: 260px"
                 />
-                <n-button :loading="loadingSites" :disabled="!editForm.panel_id" @click="handleLoadSites">读取站点/订单</n-button>
+                <n-button
+                  v-if="editForm.renew_mode === 'auto'"
+                  :loading="loadingSites"
+                  :disabled="!editForm.panel_id"
+                  @click="handleLoadSites"
+                >读取站点/订单</n-button>
               </n-space>
-              <span style="font-size: 12px; color: #999">优先按 ACME 订单域名匹配；无订单时按该名称匹配宝塔站点</span>
+              <span style="font-size: 12px; color: #999">
+                {{ editForm.renew_mode === 'docker'
+                  ? 'Docker/反向代理项目走宝塔 Docker 模块重新申请，站点名留空时使用当前域名'
+                  : '优先按 ACME 订单域名匹配；无订单时按该名称匹配宝塔站点' }}
+              </span>
             </n-space>
           </n-form-item>
-          <n-form-item label="ACME 订单 ID（可选）">
-            <n-input v-model:value="editForm.order_index" placeholder="留空自动匹配该域名最新的有效订单" />
+          <n-form-item v-if="editForm.renew_mode === 'docker'" label="Docker 项目 ID">
+            <n-input-number v-model:value="editForm.docker_id" :min="1" placeholder="宝塔 Docker 项目 ID，例如 1" style="width: 220px" />
           </n-form-item>
-          <n-space>
-            <n-form-item label="站点 ID（可选）">
-              <n-input-number v-model:value="editForm.site_id" :min="1" placeholder="无订单时新申请需要" style="width: 180px" />
+          <template v-else>
+            <n-form-item label="ACME 订单 ID（可选）">
+              <n-input v-model:value="editForm.order_index" placeholder="留空自动匹配该域名最新的有效订单" />
             </n-form-item>
-            <n-form-item label="站点根目录（可选）">
-              <n-input v-model:value="editForm.site_path" placeholder="/www/wwwroot/example.com" style="width: 280px" />
-            </n-form-item>
-          </n-space>
+            <n-space>
+              <n-form-item label="站点 ID（可选）">
+                <n-input-number v-model:value="editForm.site_id" :min="1" placeholder="无订单时新申请需要" style="width: 180px" />
+              </n-form-item>
+              <n-form-item label="站点根目录（可选）">
+                <n-input v-model:value="editForm.site_path" placeholder="/www/wwwroot/example.com" style="width: 280px" />
+              </n-form-item>
+            </n-space>
+          </template>
           <n-form-item label="自动续签">
             <n-switch v-model:value="editForm.cert_auto_renew" />
             <span style="font-size: 12px; color: #999; margin-left: 8px">证书进入到期告警阈值后自动触发</span>
@@ -254,11 +271,17 @@ const editForm = ref({
   cert_provider: 'none',
   panel_id: null as number | null,
   site_name: '',
+  renew_mode: 'auto',
+  docker_id: null as number | null,
   order_index: '',
   site_id: null as number | null,
   site_path: '',
   cert_auto_renew: false,
 })
+const renewModeOptions = [
+  { label: '自动（优先 ACME 订单）', value: 'auto' },
+  { label: 'Docker/反向代理项目（重新申请）', value: 'docker' },
+]
 const renewingIds = ref<number[]>([])
 const renewTimers: Record<number, ReturnType<typeof setInterval>> = {}
 
@@ -557,6 +580,8 @@ function openEdit(row: DomainInfo) {
     cert_provider: row.cert_provider || 'none',
     panel_id: config.panel_id ?? null,
     site_name: config.site_name || '',
+    renew_mode: config.mode || 'auto',
+    docker_id: config.docker_id ?? null,
     order_index: config.order_index || '',
     site_id: config.site_id ?? null,
     site_path: config.site_path || '',
@@ -608,6 +633,10 @@ async function handleSaveEdit() {
     message.warning('请选择宝塔面板')
     return
   }
+  if (editForm.value.cert_provider === 'baota' && editForm.value.renew_mode === 'docker' && !editForm.value.docker_id) {
+    message.warning('Docker/反向代理模式需要填写 Docker 项目 ID')
+    return
+  }
   editSaving.value = true
   try {
     const payload: DomainUpdate = {
@@ -619,9 +648,11 @@ async function handleSaveEdit() {
         ? {
             panel_id: editForm.value.panel_id!,
             site_name: (editForm.value.site_name || '').trim(),
-            order_index: (editForm.value.order_index || '').trim(),
-            site_id: editForm.value.site_id,
-            site_path: (editForm.value.site_path || '').trim(),
+            mode: editForm.value.renew_mode,
+            docker_id: editForm.value.renew_mode === 'docker' ? editForm.value.docker_id : null,
+            order_index: editForm.value.renew_mode === 'auto' ? (editForm.value.order_index || '').trim() : '',
+            site_id: editForm.value.renew_mode === 'auto' ? editForm.value.site_id : null,
+            site_path: editForm.value.renew_mode === 'auto' ? (editForm.value.site_path || '').trim() : '',
           }
         : {},
       cert_auto_renew: editForm.value.cert_provider === 'baota' ? editForm.value.cert_auto_renew : false,
