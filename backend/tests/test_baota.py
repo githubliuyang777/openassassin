@@ -131,6 +131,15 @@ class TestSiteParsing:
             baota_service._resolve_site(sites, "", "example.com")
 
 
+    def test_normalize_rejects_invalid_ids(self):
+        assert baota_service._normalize_sites({"sites": [
+            {"id": True, "name": "bool", "path": "/x"},
+            {"id": 1.9, "name": "float", "path": "/x"},
+            {"id": float("inf"), "name": "inf", "path": "/x"},
+            {"id": 2, "name": "ok", "path": "/x"},
+        ]}) == [{"id": 2, "name": "ok", "path": "/x"}]
+
+
 class TestDockerSites:
     def test_normalize_sites_and_filters_invalid(self):
         body = {
@@ -154,13 +163,23 @@ class TestDockerSites:
         ]
 
     def test_normalize_requires_data_list(self):
+        item = {"id": 3, "name": "gamma.example.com", "type": "反向代理"}
+        expected = [{"id": 3, "name": "gamma.example.com", "type": "反向代理", "project_name": ""}]
         assert baota_service._normalize_docker_sites({"status": True, "data": []}) == []
+        assert baota_service._normalize_docker_sites(
+            {"status": True, "data": {"data": [item]}}
+        ) == expected
+        assert baota_service._normalize_docker_sites(
+            {"status": True, "data": {"list": [item]}}
+        ) == expected
         with pytest.raises(baota_service.BaotaError):
             baota_service._normalize_docker_sites([])
         with pytest.raises(baota_service.BaotaError):
             baota_service._normalize_docker_sites({"status": True})
         with pytest.raises(baota_service.BaotaError):
-            baota_service._normalize_docker_sites({"status": True, "data": {"data": []}})
+            baota_service._normalize_docker_sites(
+                {"status": True, "data": {"unknown": []}}
+            )
 
     def test_normalize_invalid_service_info(self):
         body = {"data": [{"id": 1, "name": "example.com", "service_info": "not-json"}]}
@@ -506,6 +525,12 @@ class TestOrders:
             raise AssertionError("should not read orders in docker mode")
 
         monkeypatch.setattr(baota_service, "get_orders", _unexpected)
+        monkeypatch.setattr(baota_service, "list_docker_sites", lambda db, panel_id: [{
+            "id": 1,
+            "name": "dashboard.example.com",
+            "type": "反向代理",
+            "project_name": "",
+        }])
         monkeypatch.setattr(baota_service, "_post", fake_post)
         result = baota_service.start_renewal("dashboard.example.com", {
             "panel_id": panel.id,
@@ -531,6 +556,80 @@ class TestOrders:
             "cert_algorithm": "rsa4096",
             "site_name": "dashboard.example.com",
         }
+
+    def test_start_renewal_docker_rejects_unknown_site(self, db_session, monkeypatch):
+        panel = _panel(db_session)
+        monkeypatch.setattr(baota_service, "list_docker_sites", lambda db, panel_id: [{
+            "id": 2,
+            "name": "dashboard.example.com",
+            "type": "反向代理",
+            "project_name": "",
+        }])
+
+        def _unexpected(*args, **kwargs):
+            raise AssertionError("should not call apply_cert_api")
+
+        monkeypatch.setattr(baota_service, "_post", _unexpected)
+        with pytest.raises(baota_service.BaotaError, match="不在面板站点列表"):
+            baota_service.start_renewal("dashboard.example.com", {
+                "panel_id": panel.id,
+                "site_name": "",
+                "mode": "docker",
+                "docker_id": 1,
+                "order_index": "",
+                "site_id": None,
+                "site_path": "",
+            })
+
+    def test_start_renewal_docker_rejects_site_name_mismatch(self, db_session, monkeypatch):
+        panel = _panel(db_session)
+        monkeypatch.setattr(baota_service, "list_docker_sites", lambda db, panel_id: [{
+            "id": 1,
+            "name": "other.example.com",
+            "type": "反向代理",
+            "project_name": "",
+        }])
+
+        def _unexpected(*args, **kwargs):
+            raise AssertionError("should not call apply_cert_api")
+
+        monkeypatch.setattr(baota_service, "_post", _unexpected)
+        with pytest.raises(baota_service.BaotaError, match="站点名与站点 ID 不匹配"):
+            baota_service.start_renewal("dashboard.example.com", {
+                "panel_id": panel.id,
+                "site_name": "",
+                "mode": "docker",
+                "docker_id": 1,
+                "order_index": "",
+                "site_id": None,
+                "site_path": "",
+            })
+
+    def test_start_renewal_docker_allows_manual_when_site_list_unavailable(self, db_session, monkeypatch):
+        panel = _panel(db_session)
+
+        def unavailable(db, panel_id):
+            raise baota_service.BaotaError("site list unavailable")
+
+        monkeypatch.setattr(baota_service, "list_docker_sites", unavailable)
+        captured = {}
+
+        def fake_post(ctx, path, data, raw=False):
+            captured.update({"path": path, "data": data})
+            return {"status": True, "msg": "申请成功!"}
+
+        monkeypatch.setattr(baota_service, "_post", fake_post)
+        result = baota_service.start_renewal("dashboard.example.com", {
+            "panel_id": panel.id,
+            "site_name": "",
+            "mode": "docker",
+            "docker_id": 1,
+            "order_index": "",
+            "site_id": None,
+            "site_path": "",
+        })
+        assert result["mode"] == "docker"
+        assert captured["path"] == "/mod/docker/com/apply_cert_api"
 
     def test_validate_docker_mode(self, db_session):
         panel = _panel(db_session)
@@ -564,6 +663,12 @@ class TestOrders:
         assert config["order_index"] == "abc123"
         assert config["site_id"] == 7
         assert config["site_path"] == "/www/example"
+        long_name = "a" * 200
+        config = baota_service.validate_domain_config(db_session, {
+            "panel_id": panel.id,
+            "site_name": long_name,
+        })
+        assert config["site_name"] == long_name
         with pytest.raises(ValueError):
             baota_service.validate_domain_config(db_session, {
                 "panel_id": panel.id, "site_path": "relative",

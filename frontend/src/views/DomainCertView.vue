@@ -117,11 +117,12 @@
                 <n-space>
                   <n-input-number
                     v-if="showManualDockerInput"
-                    v-model:value="editForm.docker_id"
+                    :value="editForm.docker_id"
                     :min="1"
                     :precision="0"
                     placeholder="手工填写宝塔 Docker 站点 ID"
                     style="width: 260px"
+                    @update:value="onManualDockerIdChange"
                   />
                   <n-select
                     v-else
@@ -333,21 +334,37 @@ const loadingDockerSites = ref(false)
 const dockerSitesLoaded = ref(false)
 const dockerSitesError = ref('')
 const manualDockerId = ref(false)
+const dockerIdTouched = ref(false)
 let dockerSitesRequestId = 0
+let previousRenewMode = ''
+
+function findDockerSite(siteId: number | null) {
+  if (siteId == null) return null
+  return dockerSites.value.find((s) => s.id === siteId) || null
+}
+
+function dockerDomainMatches(siteName: string, domain: string) {
+  const site = siteName.trim().toLowerCase()
+  const host = domain.trim().toLowerCase()
+  return !!site && !!host && (
+    site === host ||
+    site === `www.${host}` ||
+    host === `www.${site}`
+  )
+}
+
 const dockerSiteOptions = computed(() => {
   const options = dockerSites.value.map((s) => ({
     label: [s.name + ` (#${s.id})`, s.type, s.project_name].filter(Boolean).join(' · '),
     value: s.id,
   }))
   const current = editForm.value.docker_id
-  if (current != null && !options.some((o) => o.value === current)) {
+  if (current != null && !findDockerSite(current)) {
     options.push({ label: `已保存站点 #${current}`, value: current })
   }
   return options
 })
-const selectedDockerSite = computed(() =>
-  dockerSites.value.find((s) => s.id === editForm.value.docker_id) || null
-)
+const selectedDockerSite = computed(() => findDockerSite(editForm.value.docker_id))
 const dockerSiteNameMismatch = computed(() => {
   const site = selectedDockerSite.value
   return !!site && !!editForm.value.site_name &&
@@ -355,12 +372,12 @@ const dockerSiteNameMismatch = computed(() => {
 })
 const dockerDomainMismatch = computed(() => {
   const site = selectedDockerSite.value
-  return !!site && site.name.toLowerCase() !== editForm.value.domain.toLowerCase()
+  return !!site && !dockerDomainMatches(site.name, editForm.value.domain)
 })
 const savedDockerIdMissing = computed(() =>
   editForm.value.docker_id != null &&
   dockerSitesLoaded.value &&
-  !dockerSites.value.some((s) => s.id === editForm.value.docker_id)
+  !findDockerSite(editForm.value.docker_id)
 )
 const showManualDockerInput = computed(() =>
   editForm.value.renew_mode === 'docker' &&
@@ -675,6 +692,7 @@ function openEdit(row: DomainInfo) {
     site_path: config.site_path || '',
     cert_auto_renew: row.cert_auto_renew,
   }
+  previousRenewMode = editForm.value.renew_mode
   siteOptions.value = config.site_name ? [{ label: config.site_name, value: config.site_name }] : []
   showEditModal.value = true
   clearDockerSiteState()
@@ -686,6 +704,7 @@ function openEdit(row: DomainInfo) {
 function clearDockerSiteState() {
   dockerSitesRequestId += 1
   manualDockerId.value = false
+  dockerIdTouched.value = false
   dockerSites.value = []
   dockerSitesLoaded.value = false
   dockerSitesError.value = ''
@@ -699,14 +718,15 @@ function isDockerSitesRequestStale(requestId: number, panelId: number) {
 }
 
 function applyDockerSiteMatch() {
+  if (manualDockerId.value || dockerIdTouched.value) return
   const domain = editForm.value.domain.trim().toLowerCase()
   if (!domain) return
-  const current = dockerSites.value.find((s) => s.id === editForm.value.docker_id)
+  const current = findDockerSite(editForm.value.docker_id)
   if (current) {
     if (!editForm.value.site_name) editForm.value.site_name = current.name
     return
   }
-  const matches = dockerSites.value.filter((s) => s.name.toLowerCase() === domain)
+  const matches = dockerSites.value.filter((s) => dockerDomainMatches(s.name, domain))
   if (matches.length === 1) {
     editForm.value.docker_id = matches[0].id
     editForm.value.site_name = matches[0].name
@@ -714,9 +734,22 @@ function applyDockerSiteMatch() {
 }
 
 function onDockerSiteChange(siteId: number | null) {
+  dockerIdTouched.value = true
   editForm.value.docker_id = siteId
-  const site = dockerSites.value.find((s) => s.id === siteId)
-  if (site) editForm.value.site_name = site.name
+  const site = findDockerSite(siteId)
+  editForm.value.site_name = site ? site.name : ''
+}
+
+function onManualDockerIdChange(value: number | null) {
+  const previousSite = selectedDockerSite.value
+  dockerIdTouched.value = true
+  editForm.value.docker_id = value
+  const site = findDockerSite(value)
+  if (site) {
+    editForm.value.site_name = site.name
+  } else if (previousSite) {
+    editForm.value.site_name = ''
+  }
 }
 
 function useSelectedDockerSiteName() {
@@ -748,6 +781,8 @@ async function loadDockerSites() {
 }
 
 function onRenewModeChange(value: string) {
+  if (value === previousRenewMode) return
+  previousRenewMode = value
   editForm.value.site_name = ''
   if (value === 'docker') {
     if (editForm.value.panel_id) void loadDockerSites()
@@ -804,7 +839,7 @@ async function handleLoadSites() {
   }
 }
 
-async function handleSaveEdit() {
+function handleSaveEdit() {
   if (editForm.value.cert_provider === 'baota' && !editForm.value.panel_id) {
     message.warning('请选择宝塔面板')
     return
@@ -817,6 +852,26 @@ async function handleSaveEdit() {
     message.warning('当前站点名与所选 Docker 站点不一致，请点击“使用站点名”或重新选择站点')
     return
   }
+  if (
+    editForm.value.cert_provider === 'baota' &&
+    editForm.value.renew_mode === 'docker' &&
+    dockerSitesLoaded.value &&
+    !dockerSitesError.value &&
+    savedDockerIdMissing.value
+  ) {
+    dialog.warning({
+      title: '站点 ID 不在列表中',
+      content: '当前站点 ID 不在该面板的 Docker 站点列表中，可能无法续签。仍要保存吗？',
+      positiveText: '仍要保存',
+      negativeText: '取消',
+      onPositiveClick: () => { void doSaveEdit() },
+    })
+    return
+  }
+  void doSaveEdit()
+}
+
+async function doSaveEdit() {
   editSaving.value = true
   try {
     const payload: DomainUpdate = {

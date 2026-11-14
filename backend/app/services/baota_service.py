@@ -128,9 +128,14 @@ def _normalize_sites(payload: dict) -> list[dict]:
     for item in raw:
         if not isinstance(item, dict):
             continue
+        raw_id = item.get("id")
+        if isinstance(raw_id, bool):
+            continue
+        if isinstance(raw_id, float) and (not math.isfinite(raw_id) or not raw_id.is_integer()):
+            continue
         try:
-            site_id = int(item.get("id"))
-        except (TypeError, ValueError):
+            site_id = int(raw_id)
+        except (TypeError, ValueError, OverflowError):
             continue
         name = str(item.get("name") or item.get("site_name") or "").strip()
         path = str(item.get("path") or item.get("site_path") or "").strip()
@@ -253,6 +258,13 @@ def _normalize_docker_sites(body) -> list[dict]:
         raise BaotaError("宝塔返回的 Docker 站点列表格式不正确")
     _raise_if_failed(body, "读取 Docker 站点列表")
     data = body.get("data")
+    if isinstance(data, dict):
+        for key in ("list", "data"):
+            if isinstance(data.get(key), list):
+                data = data[key]
+                break
+        else:
+            raise BaotaError("宝塔返回的 Docker 站点列表格式不正确")
     if not isinstance(data, list):
         raise BaotaError("宝塔返回的 Docker 站点列表格式不正确")
 
@@ -320,7 +332,7 @@ def validate_domain_config(db: Session, config: dict) -> dict:
     if not panel.enabled:
         raise ValueError("宝塔面板已禁用")
     site_name = str(config.get("site_name") or "").strip()
-    if len(site_name) > 128:
+    if len(site_name) > 256:
         raise ValueError("站点名过长")
 
     mode = str(config.get("mode") or "auto").strip().lower()
@@ -463,6 +475,13 @@ def start_renewal(domain_name: str, config: dict) -> dict:
     db = SessionLocal()
     try:
         ctx = _panel_ctx(get_panel(db, panel_id))
+        docker_sites = None
+        if config.get("mode") == "docker":
+            try:
+                docker_sites = list_docker_sites(db, panel_id)
+            except BaotaError:
+                # 站点列表接口不可用时保留手工配置，避免阻断续签
+                docker_sites = None
     finally:
         db.close()
 
@@ -470,6 +489,12 @@ def start_renewal(domain_name: str, config: dict) -> dict:
         # docker_id 是宝塔 docker_sites.id（Docker 站点 ID），不是 Compose 项目 ID
         docker_id = int(config["docker_id"])
         site_name = (config.get("site_name") or "").strip() or domain_name
+        if docker_sites is not None:
+            site = next((item for item in docker_sites if item["id"] == docker_id), None)
+            if not site:
+                raise BaotaError("已保存的 Docker 站点 ID 不在面板站点列表中，请重新选择站点")
+            if site_name.lower() != site["name"].lower():
+                raise BaotaError("Docker 站点名与站点 ID 不匹配，请重新选择站点")
         data = _post(ctx, "/mod/docker/com/apply_cert_api", {
             "domains": json.dumps([domain_name]),
             "auth_type": "http",
