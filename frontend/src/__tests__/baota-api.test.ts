@@ -36,7 +36,7 @@ describe('certificate provider api', () => {
     expect(mocks.get).toHaveBeenCalledWith('/baota/panels')
 
     fetchBaotaDockerProjects(1)
-    expect(mocks.get).toHaveBeenCalledWith('/baota/panels/1/docker-projects')
+    expect(mocks.get).toHaveBeenCalledWith('/baota/panels/1/docker-projects', { timeout: 95000 })
 
     createBaotaPanel({
       name: 'panel',

@@ -102,6 +102,11 @@ def list_docker_projects(
     db: Session = Depends(get_db),
     _user: dict = Depends(get_current_admin_user),
 ):
+    panel = db.get(BaotaPanel, panel_id)
+    if not panel:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="宝塔面板不存在")
+    if not panel.enabled:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="宝塔面板已禁用")
     try:
         return baota_service.list_docker_projects(db, panel_id)
     except baota_service.BaotaError as exc:

@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import math
 import re
 import time
 from urllib.parse import urlparse
@@ -268,16 +269,23 @@ def get_panel(db: Session, panel_id: int) -> BaotaPanel:
 def _normalize_docker_projects(body) -> list[dict]:
     if isinstance(body, dict):
         _raise_if_failed(body, "读取 Docker 项目列表")
-        for key in ("data", "list", "projects"):
+        found = False
+        for key in ("data", "list", "projects", "project_list"):
             value = body.get(key)
             if isinstance(value, list):
                 body = value
+                found = True
                 break
-            if isinstance(value, dict) and isinstance(value.get("list"), list):
-                body = value["list"]
-                break
-        else:
-            return []
+            if isinstance(value, dict):
+                for nested_key in ("list", "data", "projects", "project_list"):
+                    if isinstance(value.get(nested_key), list):
+                        body = value[nested_key]
+                        found = True
+                        break
+                if found:
+                    break
+        if not found:
+            raise BaotaError("宝塔返回的 Docker 项目列表格式不正确")
     if not isinstance(body, list):
         raise BaotaError("宝塔返回的 Docker 项目列表格式不正确")
 
@@ -285,9 +293,14 @@ def _normalize_docker_projects(body) -> list[dict]:
     for item in body:
         if not isinstance(item, dict):
             continue
+        raw_id = item.get("id")
+        if isinstance(raw_id, bool):
+            continue
+        if isinstance(raw_id, float) and (not math.isfinite(raw_id) or not raw_id.is_integer()):
+            continue
         try:
-            project_id = int(item.get("id"))
-        except (TypeError, ValueError):
+            project_id = int(raw_id)
+        except (TypeError, ValueError, OverflowError):
             continue
         if project_id <= 0:
             continue
@@ -299,8 +312,14 @@ def _normalize_docker_projects(body) -> list[dict]:
 
 def list_docker_projects(db: Session, panel_id: int) -> list[dict]:
     # shortcut: 宝塔 Docker 项目列表接口随版本可能变化，失败时前端保留手工填写项目 ID
+    # 官方接口仅提供 GET，request_token 会出现在时效性查询串中，不含 API Key。
     ctx = _panel_ctx(get_panel(db, panel_id))
-    body = _get(ctx, "/btdocker/project/get_project_list", raw=True)
+    body = _get(
+        ctx,
+        "/btdocker/project/get_project_list",
+        params={"p": 1, "limit": SITE_LIMIT},
+        raw=True,
+    )
     return _normalize_docker_projects(body)
 
 
@@ -328,9 +347,14 @@ def validate_domain_config(db: Session, config: dict) -> dict:
     if docker_id in (None, ""):
         docker_id = None
     else:
+        if isinstance(docker_id, bool) or (
+            isinstance(docker_id, float)
+            and (not math.isfinite(docker_id) or not docker_id.is_integer())
+        ):
+            raise ValueError("Docker 项目 ID 必须是整数")
         try:
             docker_id = int(docker_id)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             raise ValueError("Docker 项目 ID 必须是数字")
         if docker_id <= 0:
             raise ValueError("Docker 项目 ID 不正确")
@@ -345,9 +369,14 @@ def validate_domain_config(db: Session, config: dict) -> dict:
     if site_id in (None, ""):
         site_id = None
     else:
+        if isinstance(site_id, bool) or (
+            isinstance(site_id, float)
+            and (not math.isfinite(site_id) or not site_id.is_integer())
+        ):
+            raise ValueError("站点 ID 必须是整数")
         try:
             site_id = int(site_id)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             raise ValueError("站点 ID 必须是数字")
         if site_id <= 0:
             raise ValueError("站点 ID 不正确")

@@ -165,6 +165,9 @@ class TestDockerProjects:
             {"id": "1", "name": "alpha"},
             {"id": 0, "server_name": "zero"},
             {"id": "x", "server_name": "bad"},
+            {"id": 4.9, "server_name": "float"},
+            {"id": True, "server_name": "bool"},
+            {"id": float("inf"), "server_name": "inf"},
             {"server_name": "no-id"},
             "not-a-dict",
         ]
@@ -181,8 +184,16 @@ class TestDockerProjects:
         assert baota_service._normalize_docker_projects({"data": {"list": [item]}}) == [
             {"id": 3, "name": "gamma"},
         ]
-        assert baota_service._normalize_docker_projects({"status": True}) == []
+        assert baota_service._normalize_docker_projects({"data": {"data": [item]}}) == [
+            {"id": 3, "name": "gamma"},
+        ]
+        assert baota_service._normalize_docker_projects({"data": {"project_list": [item]}}) == [
+            {"id": 3, "name": "gamma"},
+        ]
+        assert baota_service._normalize_docker_projects({"data": []}) == []
         assert baota_service._normalize_docker_projects([]) == []
+        with pytest.raises(baota_service.BaotaError):
+            baota_service._normalize_docker_projects({"status": True})
 
     def test_normalize_status_false_is_sanitized(self):
         with pytest.raises(baota_service.BaotaError) as exc:
@@ -322,7 +333,7 @@ class TestDockerProjectAPI:
         captured = {}
 
         def fake_get(ctx, path, params=None, raw=False):
-            captured.update({"path": path, "raw": raw})
+            captured.update({"path": path, "params": params, "raw": raw})
             return [{"id": 1, "server_name": "nextcloud"}]
 
         monkeypatch.setattr(baota_service, "_get", fake_get)
@@ -332,7 +343,11 @@ class TestDockerProjectAPI:
         )
         assert resp.status_code == 200
         assert resp.json() == [{"id": 1, "name": "nextcloud"}]
-        assert captured == {"path": "/btdocker/project/get_project_list", "raw": True}
+        assert captured == {
+            "path": "/btdocker/project/get_project_list",
+            "params": {"p": 1, "limit": baota_service.SITE_LIMIT},
+            "raw": True,
+        }
 
     def test_list_projects_empty_and_error(self, client, auth_headers, db_session, monkeypatch):
         panel = _panel(db_session)
@@ -354,6 +369,35 @@ class TestDockerProjectAPI:
         )
         assert resp.status_code == 502
         assert "IP校验失败" in resp.json()["detail"]
+
+    def test_list_projects_unauthenticated(self, client, db_session):
+        panel = _panel(db_session)
+        resp = client.get(f"/api/v1/baota/panels/{panel.id}/docker-projects")
+        # 共享的 HTTPBearer 在缺少凭据时返回 403
+        assert resp.status_code == 403
+        resp = client.get(
+            f"/api/v1/baota/panels/{panel.id}/docker-projects",
+            headers={"Authorization": "Bearer invalid-token"},
+        )
+        assert resp.status_code == 401
+
+    def test_list_projects_missing_panel(self, client, auth_headers):
+        resp = client.get("/api/v1/baota/panels/999999/docker-projects", headers=auth_headers)
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "宝塔面板不存在"
+
+    def test_list_projects_disabled_panel(self, client, auth_headers, db_session):
+        panel = _panel(db_session, enabled=False)
+        resp = client.get(
+            f"/api/v1/baota/panels/{panel.id}/docker-projects",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "宝塔面板已禁用"
+
+    def test_list_projects_invalid_panel_id(self, client, auth_headers):
+        resp = client.get("/api/v1/baota/panels/abc/docker-projects", headers=auth_headers)
+        assert resp.status_code == 422
 
     def test_list_projects_non_admin(self, client, db_session):
         panel = _panel(db_session)
@@ -514,6 +558,11 @@ class TestOrders:
             baota_service.validate_domain_config(db_session, {
                 "panel_id": panel.id, "mode": "docker",
             })
+        for invalid in (1.5, True, float("inf")):
+            with pytest.raises(ValueError):
+                baota_service.validate_domain_config(db_session, {
+                    "panel_id": panel.id, "mode": "docker", "docker_id": invalid,
+                })
 
     def test_validate_advanced_fields(self, db_session):
         panel = _panel(db_session)

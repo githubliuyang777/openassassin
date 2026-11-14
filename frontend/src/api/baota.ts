@@ -73,5 +73,6 @@ export function testBaotaPanel(id: number) {
 }
 
 export function fetchBaotaDockerProjects(panelId: number) {
-  return api.get<BaotaDockerProject[]>(`/baota/panels/${panelId}/docker-projects`)
+  // 后端宝塔请求超时为 90s，前端留出余量，避免提前超时后重复发起请求
+  return api.get<BaotaDockerProject[]>(`/baota/panels/${panelId}/docker-projects`, { timeout: 95000 })
 }

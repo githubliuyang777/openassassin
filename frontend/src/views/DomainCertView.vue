@@ -144,6 +144,7 @@
                   v-if="showManualDockerInput"
                   v-model:value="editForm.docker_id"
                   :min="1"
+                  :precision="0"
                   placeholder="手工填写宝塔 Docker 项目 ID"
                   style="width: 260px"
                 />
@@ -158,12 +159,19 @@
                   style="min-width: 300px"
                 />
                 <n-button :loading="loadingDockerProjects" :disabled="!editForm.panel_id" @click="loadDockerProjects">刷新项目</n-button>
+                <n-button
+                  v-if="editForm.panel_id && !dockerProjectsError && !(dockerProjectsLoaded && dockerProjects.length === 0)"
+                  quaternary
+                  @click="manualDockerId = !manualDockerId"
+                >{{ manualDockerId ? '从列表选择' : '手工填写' }}</n-button>
               </n-space>
               <span v-if="!editForm.panel_id" style="font-size: 12px; color: #999">请先选择宝塔面板，选择后自动读取 Docker 项目</span>
               <span v-else-if="dockerProjectsError" style="font-size: 12px; color: #d03050">{{ dockerProjectsError }}</span>
               <span v-else-if="dockerProjectsLoaded && dockerProjects.length === 0" style="font-size: 12px; color: #999">该面板未发现 Docker Compose 项目，可手工填写项目 ID</span>
               <span v-else style="font-size: 12px; color: #999">
-                从宝塔 Docker 项目列表选择，项目 ID 自动填充{{ editForm.docker_id ? `：${editForm.docker_id}` : '' }}
+                {{ manualDockerId
+                  ? '手工填写 Docker 项目 ID，可随时切回列表选择'
+                  : `从宝塔 Docker 项目列表选择，项目 ID 自动填充${editForm.docker_id ? '：' + editForm.docker_id : ''}` }}
               </span>
             </n-space>
           </n-form-item>
@@ -314,6 +322,7 @@ const dockerProjects = ref<BaotaDockerProject[]>([])
 const loadingDockerProjects = ref(false)
 const dockerProjectsLoaded = ref(false)
 const dockerProjectsError = ref('')
+const manualDockerId = ref(false)
 let dockerProjectsRequestId = 0
 const dockerProjectOptions = computed(() => {
   const options = dockerProjects.value.map((p) => ({
@@ -328,7 +337,8 @@ const dockerProjectOptions = computed(() => {
 })
 const showManualDockerInput = computed(() =>
   editForm.value.renew_mode === 'docker' &&
-  (!editForm.value.panel_id ||
+  (manualDockerId.value ||
+   !editForm.value.panel_id ||
    dockerProjectsError.value !== '' ||
    (dockerProjectsLoaded.value && dockerProjects.value.length === 0))
 )
@@ -648,10 +658,17 @@ function openEdit(row: DomainInfo) {
 
 function clearDockerProjectState() {
   dockerProjectsRequestId += 1
+  manualDockerId.value = false
   dockerProjects.value = []
   dockerProjectsLoaded.value = false
   dockerProjectsError.value = ''
   loadingDockerProjects.value = false
+}
+
+function isDockerProjectsRequestStale(requestId: number, panelId: number) {
+  return requestId !== dockerProjectsRequestId ||
+    editForm.value.panel_id !== panelId ||
+    editForm.value.renew_mode !== 'docker'
 }
 
 async function loadDockerProjects() {
@@ -664,11 +681,11 @@ async function loadDockerProjects() {
   dockerProjectsError.value = ''
   try {
     const resp = await fetchBaotaDockerProjects(panelId)
-    if (requestId !== dockerProjectsRequestId || editForm.value.panel_id !== panelId || editForm.value.renew_mode !== 'docker') return
+    if (isDockerProjectsRequestStale(requestId, panelId)) return
     dockerProjects.value = resp.data || []
     dockerProjectsLoaded.value = true
   } catch (e: any) {
-    if (requestId !== dockerProjectsRequestId || editForm.value.panel_id !== panelId || editForm.value.renew_mode !== 'docker') return
+    if (isDockerProjectsRequestStale(requestId, panelId)) return
     dockerProjects.value = []
     dockerProjectsLoaded.value = true
     dockerProjectsError.value = e.message || '读取 Docker 项目列表失败'
@@ -690,6 +707,9 @@ function onProviderChange(value: string) {
     editForm.value.panel_id = null
     editForm.value.site_name = ''
     editForm.value.docker_id = null
+    editForm.value.order_index = ''
+    editForm.value.site_id = null
+    editForm.value.site_path = ''
     editForm.value.cert_auto_renew = false
     siteOptions.value = []
     clearDockerProjectState()
@@ -699,6 +719,9 @@ function onProviderChange(value: string) {
 function onPanelChange() {
   editForm.value.site_name = ''
   editForm.value.docker_id = null
+  editForm.value.order_index = ''
+  editForm.value.site_id = null
+  editForm.value.site_path = ''
   siteOptions.value = []
   clearDockerProjectState()
   if (editForm.value.renew_mode === 'docker') void loadDockerProjects()
