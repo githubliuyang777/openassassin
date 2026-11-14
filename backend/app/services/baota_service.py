@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import math
 import re
 import time
 from urllib.parse import urlparse
@@ -62,25 +63,39 @@ def _panel_ctx(panel: BaotaPanel) -> dict:
     }
 
 
-def _post(ctx: dict, path: str, data: dict, raw: bool = False):
+def _signed_params(ctx: dict, data: dict | None = None) -> dict:
     try:
         api_key = credential_service.decrypt(ctx["encrypted_api_key"])
     except Exception as exc:
         raise BaotaError("无法解密宝塔 API 密钥（请检查 MASTER_KEY 是否变更）") from exc
 
     request_time = int(time.time())
-    payload = dict(data)
+    payload = dict(data or {})
     payload["request_time"] = str(request_time)
     payload["request_token"] = _sign(api_key, request_time)
+    return payload
 
+
+def _request(method: str, ctx: dict, path: str, data: dict | None = None, raw: bool = False):
+    payload = _signed_params(ctx, data)
+    url = f"{ctx['url']}{path}"
     try:
-        resp = httpx.post(
-            f"{ctx['url']}{path}",
-            data=payload,
-            timeout=BAOTA_TIMEOUT,
-            verify=ctx["verify_tls"],
-            follow_redirects=False,
-        )
+        if method == "GET":
+            resp = httpx.get(
+                url,
+                params=payload,
+                timeout=BAOTA_TIMEOUT,
+                verify=ctx["verify_tls"],
+                follow_redirects=False,
+            )
+        else:
+            resp = httpx.post(
+                url,
+                data=payload,
+                timeout=BAOTA_TIMEOUT,
+                verify=ctx["verify_tls"],
+                follow_redirects=False,
+            )
     except httpx.RequestError as exc:
         raise BaotaError(f"无法连接宝塔面板: {type(exc).__name__}") from exc
 
@@ -100,6 +115,14 @@ def _post(ctx: dict, path: str, data: dict, raw: bool = False):
     if not isinstance(body, dict):
         raise BaotaError("宝塔面板返回格式不正确")
     return body
+
+
+def _post(ctx: dict, path: str, data: dict, raw: bool = False):
+    return _request("POST", ctx, path, data, raw)
+
+
+def _get(ctx: dict, path: str, params: dict | None = None, raw: bool = False):
+    return _request("GET", ctx, path, params, raw)
 
 
 def _raise_if_failed(data: dict, action: str) -> None:
@@ -243,6 +266,63 @@ def get_panel(db: Session, panel_id: int) -> BaotaPanel:
     return panel
 
 
+def _normalize_docker_projects(body) -> list[dict]:
+    if isinstance(body, dict):
+        _raise_if_failed(body, "读取 Docker 项目列表")
+        found = False
+        for key in ("data", "list", "projects", "project_list"):
+            value = body.get(key)
+            if isinstance(value, list):
+                body = value
+                found = True
+                break
+            if isinstance(value, dict):
+                for nested_key in ("list", "data", "projects", "project_list"):
+                    if isinstance(value.get(nested_key), list):
+                        body = value[nested_key]
+                        found = True
+                        break
+                if found:
+                    break
+        if not found:
+            raise BaotaError("宝塔返回的 Docker 项目列表格式不正确")
+    if not isinstance(body, list):
+        raise BaotaError("宝塔返回的 Docker 项目列表格式不正确")
+
+    projects = []
+    for item in body:
+        if not isinstance(item, dict):
+            continue
+        raw_id = item.get("id")
+        if isinstance(raw_id, bool):
+            continue
+        if isinstance(raw_id, float) and (not math.isfinite(raw_id) or not raw_id.is_integer()):
+            continue
+        try:
+            project_id = int(raw_id)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if project_id <= 0:
+            continue
+        name = str(item.get("server_name") or item.get("name") or "").strip()
+        projects.append({"id": project_id, "name": name[:128]})
+    projects.sort(key=lambda project: (project["name"].lower(), project["id"]))
+    return projects
+
+
+def list_docker_projects(db: Session, panel_id: int) -> list[dict]:
+    # shortcut: 宝塔 Docker 项目列表接口随版本可能变化，失败时前端保留手工填写项目 ID
+    # 官方接口仅提供 GET，request_token 会出现在时效性查询串中，不含 API Key。
+    ctx = _panel_ctx(get_panel(db, panel_id))
+    body = _get(
+        ctx,
+        "/btdocker/project/get_project_list",
+        params={"p": 1, "limit": SITE_LIMIT},
+        raw=True,
+    )
+    return _normalize_docker_projects(body)
+
+
 def validate_domain_config(db: Session, config: dict) -> dict:
     if not isinstance(config, dict):
         raise ValueError("宝塔配置格式不正确")
@@ -267,9 +347,14 @@ def validate_domain_config(db: Session, config: dict) -> dict:
     if docker_id in (None, ""):
         docker_id = None
     else:
+        if isinstance(docker_id, bool) or (
+            isinstance(docker_id, float)
+            and (not math.isfinite(docker_id) or not docker_id.is_integer())
+        ):
+            raise ValueError("Docker 项目 ID 必须是整数")
         try:
             docker_id = int(docker_id)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             raise ValueError("Docker 项目 ID 必须是数字")
         if docker_id <= 0:
             raise ValueError("Docker 项目 ID 不正确")
@@ -284,9 +369,14 @@ def validate_domain_config(db: Session, config: dict) -> dict:
     if site_id in (None, ""):
         site_id = None
     else:
+        if isinstance(site_id, bool) or (
+            isinstance(site_id, float)
+            and (not math.isfinite(site_id) or not site_id.is_integer())
+        ):
+            raise ValueError("站点 ID 必须是整数")
         try:
             site_id = int(site_id)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             raise ValueError("站点 ID 必须是数字")
         if site_id <= 0:
             raise ValueError("站点 ID 不正确")

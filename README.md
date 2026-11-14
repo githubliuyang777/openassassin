@@ -71,7 +71,7 @@ kubectl apply -k k8s
 | 忘记密码 | 邮箱验证码找回密码（需配置 SMTP） |
 | 双因素认证 | TOTP (Google Authenticator) 二次验证，Email OTP 绑定过渡，8 个一次性备用码 |
 
-> 域名证书的自动续签按域名单独开启：编辑域名 → 选择「宝塔面板」→ 选择面板/站点。宝塔面板需在后台开启 API 接口并把本平台服务器 IP 加入白名单。普通网站优先复用宝塔 ACME 订单（按域名自动匹配最新有效订单，也可手工填写订单 ID），没有订单时才新申请；新申请需要站点 ID/根目录，可在域名编辑的“高级”字段手工填写。Docker/反向代理项目选择「Docker/反向代理项目（重新申请）」并填写 Docker 项目 ID，平台调用宝塔 Docker 模块的重新申请接口，不再依赖站点列表或 ACME 订单。证书进入到期告警阈值后触发，使用 HTTP-01 验证；无法读取证书到期时间时仍会按 72 小时冷却尝试。同一宝塔站点只建议为一个域名开启自动续签。后端通过 Provider 注册表扩展其它证书维护平台，新增平台不需要修改域名表结构。
+> 域名证书的自动续签按域名单独开启：编辑域名 → 选择「宝塔面板」→ 选择面板/站点。宝塔面板需在后台开启 API 接口并把本平台服务器 IP 加入白名单。普通网站优先复用宝塔 ACME 订单（按域名自动匹配最新有效订单，也可手工填写订单 ID），没有订单时才新申请；新申请需要站点 ID/根目录，可在域名编辑的“高级”字段手工填写。Docker/反向代理项目选择「Docker/反向代理项目（重新申请）」后，平台自动读取宝塔 Docker Compose 项目列表，选择项目即自动填充 Docker 项目 ID（接口不可用时仍可手工填写），再调用宝塔 Docker 模块的重新申请接口，不再依赖站点列表或 ACME 订单。证书进入到期告警阈值后触发，使用 HTTP-01 验证；无法读取证书到期时间时仍会按 72 小时冷却尝试。同一宝塔站点只建议为一个域名开启自动续签。后端通过 Provider 注册表扩展其它证书维护平台，新增平台不需要修改域名表结构。
 
 ## 技术栈
 
@@ -98,7 +98,7 @@ openassassin/
 │   │   ├── api/                    # REST 路由
 │   │   ├── services/               # 业务逻辑 + 沙箱 + 加密 + 邮件
 │   │   └── middleware/             # JWT Bearer 鉴权
-│   ├── tests/                      # pytest 测试 (247 用例)
+│   ├── tests/                      # pytest 测试 (258 用例)
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
@@ -189,7 +189,7 @@ npm run test      # 运行测试
 ### 测试
 
 ```bash
-# 后端测试 (247 用例)
+# 后端测试 (258 用例)
 cd backend && pytest tests/ -v
 
 # 前端测试 (15 用例)
@@ -274,6 +274,7 @@ PR → backend-tests  ──┐
 | GET/POST | `/api/v1/baota/panels` | 宝塔面板列表 / 新增 | 是 / 管理员 |
 | PUT/DELETE | `/api/v1/baota/panels/{id}` | 更新 / 删除宝塔面板 | 管理员 |
 | POST | `/api/v1/baota/panels/{id}/test` | 验证 API 密钥并读取站点列表 | 管理员 |
+| GET | `/api/v1/baota/panels/{id}/docker-projects` | 读取面板的 Docker Compose 项目列表 | 管理员 |
 
 ### 订阅
 

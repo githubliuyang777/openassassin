@@ -79,6 +79,11 @@ class BaotaSite(BaseModel):
     name: str
 
 
+class BaotaDockerProject(BaseModel):
+    id: int
+    name: str
+
+
 class BaotaOrder(BaseModel):
     index: str
     domains: list[str] = Field(default_factory=list)

@@ -109,7 +109,7 @@
             <n-select v-model:value="editForm.panel_id" :options="panelOptions" placeholder="选择宝塔面板" @update:value="onPanelChange" />
           </n-form-item>
           <n-form-item label="续签方式">
-            <n-select v-model:value="editForm.renew_mode" :options="renewModeOptions" />
+            <n-select v-model:value="editForm.renew_mode" :options="renewModeOptions" @update:value="onRenewModeChange" />
           </n-form-item>
           <n-form-item :label="editForm.renew_mode === 'docker' ? 'Docker 站点名（可选）' : '部署站点名（可选）'">
             <n-space vertical style="width: 100%">
@@ -137,8 +137,43 @@
               </span>
             </n-space>
           </n-form-item>
-          <n-form-item v-if="editForm.renew_mode === 'docker'" label="Docker 项目 ID">
-            <n-input-number v-model:value="editForm.docker_id" :min="1" placeholder="宝塔 Docker 项目 ID，例如 1" style="width: 220px" />
+          <n-form-item v-if="editForm.renew_mode === 'docker'" label="Docker/反向代理项目">
+            <n-space vertical style="width: 100%">
+              <n-space>
+                <n-input-number
+                  v-if="showManualDockerInput"
+                  v-model:value="editForm.docker_id"
+                  :min="1"
+                  :precision="0"
+                  placeholder="手工填写宝塔 Docker 项目 ID"
+                  style="width: 260px"
+                />
+                <n-select
+                  v-else
+                  v-model:value="editForm.docker_id"
+                  :options="dockerProjectOptions"
+                  :loading="loadingDockerProjects"
+                  filterable
+                  clearable
+                  placeholder="选择 Docker/反向代理项目"
+                  style="min-width: 300px"
+                />
+                <n-button :loading="loadingDockerProjects" :disabled="!editForm.panel_id" @click="loadDockerProjects">刷新项目</n-button>
+                <n-button
+                  v-if="editForm.panel_id && !dockerProjectsError && !(dockerProjectsLoaded && dockerProjects.length === 0)"
+                  quaternary
+                  @click="manualDockerId = !manualDockerId"
+                >{{ manualDockerId ? '从列表选择' : '手工填写' }}</n-button>
+              </n-space>
+              <span v-if="!editForm.panel_id" style="font-size: 12px; color: #999">请先选择宝塔面板，选择后自动读取 Docker 项目</span>
+              <span v-else-if="dockerProjectsError" style="font-size: 12px; color: #d03050">{{ dockerProjectsError }}</span>
+              <span v-else-if="dockerProjectsLoaded && dockerProjects.length === 0" style="font-size: 12px; color: #999">该面板未发现 Docker Compose 项目，可手工填写项目 ID</span>
+              <span v-else style="font-size: 12px; color: #999">
+                {{ manualDockerId
+                  ? '手工填写 Docker 项目 ID，可随时切回列表选择'
+                  : `从宝塔 Docker 项目列表选择，项目 ID 自动填充${editForm.docker_id ? '：' + editForm.docker_id : ''}` }}
+              </span>
+            </n-space>
           </n-form-item>
           <template v-else>
             <n-form-item label="ACME 订单 ID（可选）">
@@ -220,11 +255,11 @@ import {
   updateDomain, renewDomainCert,
 } from '@/api/domains'
 import { fetchGroups } from '@/api/notification-groups'
-import { fetchBaotaPanels, createBaotaPanel, updateBaotaPanel, deleteBaotaPanel, testBaotaPanel } from '@/api/baota'
+import { fetchBaotaPanels, createBaotaPanel, updateBaotaPanel, deleteBaotaPanel, testBaotaPanel, fetchBaotaDockerProjects } from '@/api/baota'
 import { fetchCertProviders } from '@/api/cert-providers'
 import { useAuthStore } from '@/stores/auth'
 import type { DomainInfo, DomainUpdate } from '@/api/domains'
-import type { BaotaPanel, BaotaPanelUpdate } from '@/api/baota'
+import type { BaotaPanel, BaotaPanelUpdate, BaotaDockerProject } from '@/api/baota'
 import type { CertProvider } from '@/api/cert-providers'
 import type { NotificationGroup } from '@/api/notification-groups'
 import type { DataTableColumn } from 'naive-ui'
@@ -282,6 +317,32 @@ const renewModeOptions = [
   { label: '自动（优先 ACME 订单）', value: 'auto' },
   { label: 'Docker/反向代理项目（重新申请）', value: 'docker' },
 ]
+
+const dockerProjects = ref<BaotaDockerProject[]>([])
+const loadingDockerProjects = ref(false)
+const dockerProjectsLoaded = ref(false)
+const dockerProjectsError = ref('')
+const manualDockerId = ref(false)
+let dockerProjectsRequestId = 0
+const dockerProjectOptions = computed(() => {
+  const options = dockerProjects.value.map((p) => ({
+    label: p.name ? `${p.name} (#${p.id})` : `项目 #${p.id}`,
+    value: p.id,
+  }))
+  const current = editForm.value.docker_id
+  if (current != null && !options.some((o) => o.value === current)) {
+    options.push({ label: `已保存项目 #${current}`, value: current })
+  }
+  return options
+})
+const showManualDockerInput = computed(() =>
+  editForm.value.renew_mode === 'docker' &&
+  (manualDockerId.value ||
+   !editForm.value.panel_id ||
+   dockerProjectsError.value !== '' ||
+   (dockerProjectsLoaded.value && dockerProjects.value.length === 0))
+)
+
 const renewingIds = ref<number[]>([])
 const renewTimers: Record<number, ReturnType<typeof setInterval>> = {}
 
@@ -589,20 +650,81 @@ function openEdit(row: DomainInfo) {
   }
   siteOptions.value = config.site_name ? [{ label: config.site_name, value: config.site_name }] : []
   showEditModal.value = true
+  clearDockerProjectState()
+  if (editForm.value.cert_provider === 'baota' && editForm.value.renew_mode === 'docker' && editForm.value.panel_id) {
+    void loadDockerProjects()
+  }
+}
+
+function clearDockerProjectState() {
+  dockerProjectsRequestId += 1
+  manualDockerId.value = false
+  dockerProjects.value = []
+  dockerProjectsLoaded.value = false
+  dockerProjectsError.value = ''
+  loadingDockerProjects.value = false
+}
+
+function isDockerProjectsRequestStale(requestId: number, panelId: number) {
+  return requestId !== dockerProjectsRequestId ||
+    editForm.value.panel_id !== panelId ||
+    editForm.value.renew_mode !== 'docker'
+}
+
+async function loadDockerProjects() {
+  const panelId = editForm.value.panel_id
+  if (editForm.value.cert_provider !== 'baota' || editForm.value.renew_mode !== 'docker' || !panelId) {
+    return
+  }
+  const requestId = ++dockerProjectsRequestId
+  loadingDockerProjects.value = true
+  dockerProjectsError.value = ''
+  try {
+    const resp = await fetchBaotaDockerProjects(panelId)
+    if (isDockerProjectsRequestStale(requestId, panelId)) return
+    dockerProjects.value = resp.data || []
+    dockerProjectsLoaded.value = true
+  } catch (e: any) {
+    if (isDockerProjectsRequestStale(requestId, panelId)) return
+    dockerProjects.value = []
+    dockerProjectsLoaded.value = true
+    dockerProjectsError.value = e.message || '读取 Docker 项目列表失败'
+  } finally {
+    if (requestId === dockerProjectsRequestId) loadingDockerProjects.value = false
+  }
+}
+
+function onRenewModeChange(value: string) {
+  if (value === 'docker') {
+    if (editForm.value.panel_id) void loadDockerProjects()
+  } else {
+    clearDockerProjectState()
+  }
 }
 
 function onProviderChange(value: string) {
   if (value !== 'baota') {
     editForm.value.panel_id = null
     editForm.value.site_name = ''
+    editForm.value.docker_id = null
+    editForm.value.order_index = ''
+    editForm.value.site_id = null
+    editForm.value.site_path = ''
     editForm.value.cert_auto_renew = false
     siteOptions.value = []
+    clearDockerProjectState()
   }
 }
 
 function onPanelChange() {
   editForm.value.site_name = ''
+  editForm.value.docker_id = null
+  editForm.value.order_index = ''
+  editForm.value.site_id = null
+  editForm.value.site_path = ''
   siteOptions.value = []
+  clearDockerProjectState()
+  if (editForm.value.renew_mode === 'docker') void loadDockerProjects()
 }
 
 async function handleLoadSites() {
@@ -634,7 +756,7 @@ async function handleSaveEdit() {
     return
   }
   if (editForm.value.cert_provider === 'baota' && editForm.value.renew_mode === 'docker' && !editForm.value.docker_id) {
-    message.warning('Docker/反向代理模式需要填写 Docker 项目 ID')
+    message.warning('请选择或填写 Docker/反向代理项目')
     return
   }
   editSaving.value = true
