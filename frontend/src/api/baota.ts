@@ -32,9 +32,11 @@ export interface BaotaSite {
   name: string
 }
 
-export interface BaotaDockerProject {
+export interface BaotaDockerSite {
   id: number
   name: string
+  type: string
+  project_name: string
 }
 
 export interface BaotaOrder {
@@ -72,7 +74,7 @@ export function testBaotaPanel(id: number) {
   return api.post<BaotaTestResult>(`/baota/panels/${id}/test`)
 }
 
-export function fetchBaotaDockerProjects(panelId: number) {
+export function fetchBaotaDockerSites(panelId: number) {
   // 后端宝塔请求超时为 90s，前端留出余量，避免提前超时后重复发起请求
-  return api.get<BaotaDockerProject[]>(`/baota/panels/${panelId}/docker-projects`, { timeout: 95000 })
+  return api.get<BaotaDockerSite[]>(`/baota/panels/${panelId}/docker-sites`, { timeout: 95000 })
 }

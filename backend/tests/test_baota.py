@@ -94,33 +94,6 @@ class TestClientRequest:
         assert "request_token" in captured["data"]
         assert "test-key" not in str(captured["data"])
 
-    def test_get_signs_query_without_key(self, db_session, monkeypatch):
-        panel = _panel(db_session)
-        captured = {}
-
-        class FakeResponse:
-            status_code = 200
-
-            def json(self):
-                return []
-
-        def fake_get(url, params, timeout, verify, follow_redirects):
-            captured.update({"url": url, "params": params, "follow_redirects": follow_redirects})
-            return FakeResponse()
-
-        monkeypatch.setattr(baota_service.httpx, "get", fake_get)
-        baota_service._get(
-            baota_service._panel_ctx(panel),
-            "/btdocker/project/get_project_list",
-            raw=True,
-        )
-
-        assert captured["url"] == "https://panel.example.com:8888/btdocker/project/get_project_list"
-        assert captured["follow_redirects"] is False
-        request_time = int(captured["params"]["request_time"])
-        assert captured["params"]["request_token"] == baota_service._sign("test-key", request_time)
-        assert "test-key" not in str(captured["params"])
-
 
 class TestSiteParsing:
     def test_normalize_new_response(self):
@@ -158,46 +131,65 @@ class TestSiteParsing:
             baota_service._resolve_site(sites, "", "example.com")
 
 
-class TestDockerProjects:
-    def test_normalize_maps_server_name_and_filters_invalid(self):
-        body = [
-            {"id": 2, "server_name": "beta"},
-            {"id": "1", "name": "alpha"},
-            {"id": 0, "server_name": "zero"},
-            {"id": "x", "server_name": "bad"},
-            {"id": 4.9, "server_name": "float"},
-            {"id": True, "server_name": "bool"},
-            {"id": float("inf"), "server_name": "inf"},
-            {"server_name": "no-id"},
-            "not-a-dict",
-        ]
-        assert baota_service._normalize_docker_projects(body) == [
-            {"id": 1, "name": "alpha"},
-            {"id": 2, "name": "beta"},
+    def test_normalize_rejects_invalid_ids(self):
+        assert baota_service._normalize_sites({"sites": [
+            {"id": True, "name": "bool", "path": "/x"},
+            {"id": 1.9, "name": "float", "path": "/x"},
+            {"id": float("inf"), "name": "inf", "path": "/x"},
+            {"id": 2, "name": "ok", "path": "/x"},
+        ]}) == [{"id": 2, "name": "ok", "path": "/x"}]
+
+
+class TestDockerSites:
+    def test_normalize_sites_and_filters_invalid(self):
+        body = {
+            "status": True,
+            "data": [
+                {"id": 2, "name": "beta.example.com", "type": "反向代理",
+                 "service_info": '{"project_name": "beta"}'},
+                {"id": "1", "name": "alpha.example.com", "type": "反向代理"},
+                {"id": 0, "name": "zero.example.com"},
+                {"id": "x", "name": "bad.example.com"},
+                {"id": 4.9, "name": "float.example.com"},
+                {"id": True, "name": "bool.example.com"},
+                {"id": float("inf"), "name": "inf.example.com"},
+                {"id": 3, "name": ""},
+                "not-a-dict",
+            ],
+        }
+        assert baota_service._normalize_docker_sites(body) == [
+            {"id": 1, "name": "alpha.example.com", "type": "反向代理", "project_name": ""},
+            {"id": 2, "name": "beta.example.com", "type": "反向代理", "project_name": "beta"},
         ]
 
-    def test_normalize_accepts_wrappers_and_empty(self):
-        item = {"id": 3, "server_name": "gamma"}
-        assert baota_service._normalize_docker_projects({"data": [item]}) == [
-            {"id": 3, "name": "gamma"},
-        ]
-        assert baota_service._normalize_docker_projects({"data": {"list": [item]}}) == [
-            {"id": 3, "name": "gamma"},
-        ]
-        assert baota_service._normalize_docker_projects({"data": {"data": [item]}}) == [
-            {"id": 3, "name": "gamma"},
-        ]
-        assert baota_service._normalize_docker_projects({"data": {"project_list": [item]}}) == [
-            {"id": 3, "name": "gamma"},
-        ]
-        assert baota_service._normalize_docker_projects({"data": []}) == []
-        assert baota_service._normalize_docker_projects([]) == []
+    def test_normalize_requires_data_list(self):
+        item = {"id": 3, "name": "gamma.example.com", "type": "反向代理"}
+        expected = [{"id": 3, "name": "gamma.example.com", "type": "反向代理", "project_name": ""}]
+        assert baota_service._normalize_docker_sites({"status": True, "data": []}) == []
+        assert baota_service._normalize_docker_sites(
+            {"status": True, "data": {"data": [item]}}
+        ) == expected
+        assert baota_service._normalize_docker_sites(
+            {"status": True, "data": {"list": [item]}}
+        ) == expected
         with pytest.raises(baota_service.BaotaError):
-            baota_service._normalize_docker_projects({"status": True})
+            baota_service._normalize_docker_sites([])
+        with pytest.raises(baota_service.BaotaError):
+            baota_service._normalize_docker_sites({"status": True})
+        with pytest.raises(baota_service.BaotaError):
+            baota_service._normalize_docker_sites(
+                {"status": True, "data": {"unknown": []}}
+            )
+
+    def test_normalize_invalid_service_info(self):
+        body = {"data": [{"id": 1, "name": "example.com", "service_info": "not-json"}]}
+        assert baota_service._normalize_docker_sites(body) == [
+            {"id": 1, "name": "example.com", "type": "", "project_name": ""},
+        ]
 
     def test_normalize_status_false_is_sanitized(self):
         with pytest.raises(baota_service.BaotaError) as exc:
-            baota_service._normalize_docker_projects({
+            baota_service._normalize_docker_sites({
                 "status": False,
                 "msg": "IP校验失败 private_key=super-secret",
             })
@@ -327,33 +319,48 @@ class TestPanelAPI:
         assert body["orders"][0]["index"] == "abc123"
 
 
-class TestDockerProjectAPI:
-    def test_list_projects_admin(self, client, auth_headers, db_session, monkeypatch):
+class TestDockerSiteAPI:
+    def test_list_sites_admin(self, client, auth_headers, db_session, monkeypatch):
         panel = _panel(db_session)
         captured = {}
 
-        def fake_get(ctx, path, params=None, raw=False):
-            captured.update({"path": path, "params": params, "raw": raw})
-            return [{"id": 1, "server_name": "nextcloud"}]
+        def fake_post(ctx, path, data, raw=False):
+            captured.update({"path": path, "data": data})
+            return {
+                "status": True,
+                "data": [{
+                    "id": 1,
+                    "name": "dashboard.example.com",
+                    "type": "反向代理",
+                    "service_info": '{"project_name": "dashboard"}',
+                }],
+            }
 
-        monkeypatch.setattr(baota_service, "_get", fake_get)
+        monkeypatch.setattr(baota_service, "_post", fake_post)
         resp = client.get(
-            f"/api/v1/baota/panels/{panel.id}/docker-projects",
+            f"/api/v1/baota/panels/{panel.id}/docker-sites",
             headers=auth_headers,
         )
         assert resp.status_code == 200
-        assert resp.json() == [{"id": 1, "name": "nextcloud"}]
+        assert resp.json() == [{
+            "id": 1,
+            "name": "dashboard.example.com",
+            "type": "反向代理",
+            "project_name": "dashboard",
+        }]
         assert captured == {
-            "path": "/btdocker/project/get_project_list",
-            "params": {"p": 1, "limit": baota_service.SITE_LIMIT},
-            "raw": True,
+            "path": "/mod/docker/com/get_site_list",
+            "data": {"type": "all", "p": 1, "row": baota_service.SITE_LIMIT, "query": ""},
         }
 
-    def test_list_projects_empty_and_error(self, client, auth_headers, db_session, monkeypatch):
+    def test_list_sites_empty_and_error(self, client, auth_headers, db_session, monkeypatch):
         panel = _panel(db_session)
-        monkeypatch.setattr(baota_service, "_get", lambda *args, **kwargs: [])
+        monkeypatch.setattr(
+            baota_service, "_post",
+            lambda *args, **kwargs: {"status": True, "data": []},
+        )
         resp = client.get(
-            f"/api/v1/baota/panels/{panel.id}/docker-projects",
+            f"/api/v1/baota/panels/{panel.id}/docker-sites",
             headers=auth_headers,
         )
         assert resp.status_code == 200
@@ -362,51 +369,51 @@ class TestDockerProjectAPI:
         def fail(*args, **kwargs):
             raise baota_service.BaotaError("IP校验失败")
 
-        monkeypatch.setattr(baota_service, "_get", fail)
+        monkeypatch.setattr(baota_service, "_post", fail)
         resp = client.get(
-            f"/api/v1/baota/panels/{panel.id}/docker-projects",
+            f"/api/v1/baota/panels/{panel.id}/docker-sites",
             headers=auth_headers,
         )
         assert resp.status_code == 502
         assert "IP校验失败" in resp.json()["detail"]
 
-    def test_list_projects_unauthenticated(self, client, db_session):
+    def test_list_sites_unauthenticated(self, client, db_session):
         panel = _panel(db_session)
-        resp = client.get(f"/api/v1/baota/panels/{panel.id}/docker-projects")
+        resp = client.get(f"/api/v1/baota/panels/{panel.id}/docker-sites")
         # 共享的 HTTPBearer 在缺少凭据时返回 403
         assert resp.status_code == 403
         resp = client.get(
-            f"/api/v1/baota/panels/{panel.id}/docker-projects",
+            f"/api/v1/baota/panels/{panel.id}/docker-sites",
             headers={"Authorization": "Bearer invalid-token"},
         )
         assert resp.status_code == 401
 
-    def test_list_projects_missing_panel(self, client, auth_headers):
-        resp = client.get("/api/v1/baota/panels/999999/docker-projects", headers=auth_headers)
+    def test_list_sites_missing_panel(self, client, auth_headers):
+        resp = client.get("/api/v1/baota/panels/999999/docker-sites", headers=auth_headers)
         assert resp.status_code == 404
         assert resp.json()["detail"] == "宝塔面板不存在"
 
-    def test_list_projects_disabled_panel(self, client, auth_headers, db_session):
+    def test_list_sites_disabled_panel(self, client, auth_headers, db_session):
         panel = _panel(db_session, enabled=False)
         resp = client.get(
-            f"/api/v1/baota/panels/{panel.id}/docker-projects",
+            f"/api/v1/baota/panels/{panel.id}/docker-sites",
             headers=auth_headers,
         )
         assert resp.status_code == 400
         assert resp.json()["detail"] == "宝塔面板已禁用"
 
-    def test_list_projects_invalid_panel_id(self, client, auth_headers):
-        resp = client.get("/api/v1/baota/panels/abc/docker-projects", headers=auth_headers)
+    def test_list_sites_invalid_panel_id(self, client, auth_headers):
+        resp = client.get("/api/v1/baota/panels/abc/docker-sites", headers=auth_headers)
         assert resp.status_code == 422
 
-    def test_list_projects_non_admin(self, client, db_session):
+    def test_list_sites_non_admin(self, client, db_session):
         panel = _panel(db_session)
         user = User(username="docker-viewer", password_hash=hash_password("x"), role="user")
         db_session.add(user)
         db_session.commit()
         token = create_token(user.id, user.username, user.role)
         resp = client.get(
-            f"/api/v1/baota/panels/{panel.id}/docker-projects",
+            f"/api/v1/baota/panels/{panel.id}/docker-sites",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 403
@@ -518,6 +525,12 @@ class TestOrders:
             raise AssertionError("should not read orders in docker mode")
 
         monkeypatch.setattr(baota_service, "get_orders", _unexpected)
+        monkeypatch.setattr(baota_service, "list_docker_sites", lambda db, panel_id: [{
+            "id": 1,
+            "name": "dashboard.example.com",
+            "type": "反向代理",
+            "project_name": "",
+        }])
         monkeypatch.setattr(baota_service, "_post", fake_post)
         result = baota_service.start_renewal("dashboard.example.com", {
             "panel_id": panel.id,
@@ -543,6 +556,80 @@ class TestOrders:
             "cert_algorithm": "rsa4096",
             "site_name": "dashboard.example.com",
         }
+
+    def test_start_renewal_docker_rejects_unknown_site(self, db_session, monkeypatch):
+        panel = _panel(db_session)
+        monkeypatch.setattr(baota_service, "list_docker_sites", lambda db, panel_id: [{
+            "id": 2,
+            "name": "dashboard.example.com",
+            "type": "反向代理",
+            "project_name": "",
+        }])
+
+        def _unexpected(*args, **kwargs):
+            raise AssertionError("should not call apply_cert_api")
+
+        monkeypatch.setattr(baota_service, "_post", _unexpected)
+        with pytest.raises(baota_service.BaotaError, match="不在面板站点列表"):
+            baota_service.start_renewal("dashboard.example.com", {
+                "panel_id": panel.id,
+                "site_name": "",
+                "mode": "docker",
+                "docker_id": 1,
+                "order_index": "",
+                "site_id": None,
+                "site_path": "",
+            })
+
+    def test_start_renewal_docker_rejects_site_name_mismatch(self, db_session, monkeypatch):
+        panel = _panel(db_session)
+        monkeypatch.setattr(baota_service, "list_docker_sites", lambda db, panel_id: [{
+            "id": 1,
+            "name": "other.example.com",
+            "type": "反向代理",
+            "project_name": "",
+        }])
+
+        def _unexpected(*args, **kwargs):
+            raise AssertionError("should not call apply_cert_api")
+
+        monkeypatch.setattr(baota_service, "_post", _unexpected)
+        with pytest.raises(baota_service.BaotaError, match="站点名与站点 ID 不匹配"):
+            baota_service.start_renewal("dashboard.example.com", {
+                "panel_id": panel.id,
+                "site_name": "",
+                "mode": "docker",
+                "docker_id": 1,
+                "order_index": "",
+                "site_id": None,
+                "site_path": "",
+            })
+
+    def test_start_renewal_docker_allows_manual_when_site_list_unavailable(self, db_session, monkeypatch):
+        panel = _panel(db_session)
+
+        def unavailable(db, panel_id):
+            raise baota_service.BaotaError("site list unavailable")
+
+        monkeypatch.setattr(baota_service, "list_docker_sites", unavailable)
+        captured = {}
+
+        def fake_post(ctx, path, data, raw=False):
+            captured.update({"path": path, "data": data})
+            return {"status": True, "msg": "申请成功!"}
+
+        monkeypatch.setattr(baota_service, "_post", fake_post)
+        result = baota_service.start_renewal("dashboard.example.com", {
+            "panel_id": panel.id,
+            "site_name": "",
+            "mode": "docker",
+            "docker_id": 1,
+            "order_index": "",
+            "site_id": None,
+            "site_path": "",
+        })
+        assert result["mode"] == "docker"
+        assert captured["path"] == "/mod/docker/com/apply_cert_api"
 
     def test_validate_docker_mode(self, db_session):
         panel = _panel(db_session)
@@ -576,6 +663,12 @@ class TestOrders:
         assert config["order_index"] == "abc123"
         assert config["site_id"] == 7
         assert config["site_path"] == "/www/example"
+        long_name = "a" * 200
+        config = baota_service.validate_domain_config(db_session, {
+            "panel_id": panel.id,
+            "site_name": long_name,
+        })
+        assert config["site_name"] == long_name
         with pytest.raises(ValueError):
             baota_service.validate_domain_config(db_session, {
                 "panel_id": panel.id, "site_path": "relative",

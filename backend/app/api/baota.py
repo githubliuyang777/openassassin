@@ -5,7 +5,7 @@ from app.database import get_db
 from app.middleware.auth_middleware import get_current_admin_user
 from app.models.baota_panel import BaotaPanel
 from app.schemas.baota import (
-    BaotaDockerProject,
+    BaotaDockerSite,
     BaotaPanelCreate,
     BaotaPanelResponse,
     BaotaPanelUpdate,
@@ -96,8 +96,8 @@ def test_panel(
     }
 
 
-@router.get("/panels/{panel_id}/docker-projects", response_model=list[BaotaDockerProject])
-def list_docker_projects(
+@router.get("/panels/{panel_id}/docker-sites", response_model=list[BaotaDockerSite])
+def list_docker_sites(
     panel_id: int,
     db: Session = Depends(get_db),
     _user: dict = Depends(get_current_admin_user),
@@ -108,6 +108,6 @@ def list_docker_projects(
     if not panel.enabled:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="宝塔面板已禁用")
     try:
-        return baota_service.list_docker_projects(db, panel_id)
+        return baota_service.list_docker_sites(db, panel_id)
     except baota_service.BaotaError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
