@@ -32,6 +32,11 @@ export interface BaotaSite {
   name: string
 }
 
+export interface BaotaDockerProject {
+  id: number
+  name: string
+}
+
 export interface BaotaOrder {
   index: string
   domains: string[]
@@ -65,4 +70,8 @@ export function deleteBaotaPanel(id: number) {
 
 export function testBaotaPanel(id: number) {
   return api.post<BaotaTestResult>(`/baota/panels/${id}/test`)
+}
+
+export function fetchBaotaDockerProjects(panelId: number) {
+  return api.get<BaotaDockerProject[]>(`/baota/panels/${panelId}/docker-projects`)
 }

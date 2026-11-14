@@ -62,25 +62,39 @@ def _panel_ctx(panel: BaotaPanel) -> dict:
     }
 
 
-def _post(ctx: dict, path: str, data: dict, raw: bool = False):
+def _signed_params(ctx: dict, data: dict | None = None) -> dict:
     try:
         api_key = credential_service.decrypt(ctx["encrypted_api_key"])
     except Exception as exc:
         raise BaotaError("无法解密宝塔 API 密钥（请检查 MASTER_KEY 是否变更）") from exc
 
     request_time = int(time.time())
-    payload = dict(data)
+    payload = dict(data or {})
     payload["request_time"] = str(request_time)
     payload["request_token"] = _sign(api_key, request_time)
+    return payload
 
+
+def _request(method: str, ctx: dict, path: str, data: dict | None = None, raw: bool = False):
+    payload = _signed_params(ctx, data)
+    url = f"{ctx['url']}{path}"
     try:
-        resp = httpx.post(
-            f"{ctx['url']}{path}",
-            data=payload,
-            timeout=BAOTA_TIMEOUT,
-            verify=ctx["verify_tls"],
-            follow_redirects=False,
-        )
+        if method == "GET":
+            resp = httpx.get(
+                url,
+                params=payload,
+                timeout=BAOTA_TIMEOUT,
+                verify=ctx["verify_tls"],
+                follow_redirects=False,
+            )
+        else:
+            resp = httpx.post(
+                url,
+                data=payload,
+                timeout=BAOTA_TIMEOUT,
+                verify=ctx["verify_tls"],
+                follow_redirects=False,
+            )
     except httpx.RequestError as exc:
         raise BaotaError(f"无法连接宝塔面板: {type(exc).__name__}") from exc
 
@@ -100,6 +114,14 @@ def _post(ctx: dict, path: str, data: dict, raw: bool = False):
     if not isinstance(body, dict):
         raise BaotaError("宝塔面板返回格式不正确")
     return body
+
+
+def _post(ctx: dict, path: str, data: dict, raw: bool = False):
+    return _request("POST", ctx, path, data, raw)
+
+
+def _get(ctx: dict, path: str, params: dict | None = None, raw: bool = False):
+    return _request("GET", ctx, path, params, raw)
 
 
 def _raise_if_failed(data: dict, action: str) -> None:
@@ -241,6 +263,45 @@ def get_panel(db: Session, panel_id: int) -> BaotaPanel:
     if not panel.enabled:
         raise BaotaError("宝塔面板已禁用")
     return panel
+
+
+def _normalize_docker_projects(body) -> list[dict]:
+    if isinstance(body, dict):
+        _raise_if_failed(body, "读取 Docker 项目列表")
+        for key in ("data", "list", "projects"):
+            value = body.get(key)
+            if isinstance(value, list):
+                body = value
+                break
+            if isinstance(value, dict) and isinstance(value.get("list"), list):
+                body = value["list"]
+                break
+        else:
+            return []
+    if not isinstance(body, list):
+        raise BaotaError("宝塔返回的 Docker 项目列表格式不正确")
+
+    projects = []
+    for item in body:
+        if not isinstance(item, dict):
+            continue
+        try:
+            project_id = int(item.get("id"))
+        except (TypeError, ValueError):
+            continue
+        if project_id <= 0:
+            continue
+        name = str(item.get("server_name") or item.get("name") or "").strip()
+        projects.append({"id": project_id, "name": name[:128]})
+    projects.sort(key=lambda project: (project["name"].lower(), project["id"]))
+    return projects
+
+
+def list_docker_projects(db: Session, panel_id: int) -> list[dict]:
+    # shortcut: 宝塔 Docker 项目列表接口随版本可能变化，失败时前端保留手工填写项目 ID
+    ctx = _panel_ctx(get_panel(db, panel_id))
+    body = _get(ctx, "/btdocker/project/get_project_list", raw=True)
+    return _normalize_docker_projects(body)
 
 
 def validate_domain_config(db: Session, config: dict) -> dict:

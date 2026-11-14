@@ -19,6 +19,7 @@ vi.mock('@/api/client', () => ({
 import {
   createBaotaPanel,
   deleteBaotaPanel,
+  fetchBaotaDockerProjects,
   fetchBaotaPanels,
   testBaotaPanel,
   updateBaotaPanel,
@@ -33,6 +34,9 @@ describe('certificate provider api', () => {
 
     fetchBaotaPanels()
     expect(mocks.get).toHaveBeenCalledWith('/baota/panels')
+
+    fetchBaotaDockerProjects(1)
+    expect(mocks.get).toHaveBeenCalledWith('/baota/panels/1/docker-projects')
 
     createBaotaPanel({
       name: 'panel',

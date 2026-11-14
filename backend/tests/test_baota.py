@@ -94,6 +94,33 @@ class TestClientRequest:
         assert "request_token" in captured["data"]
         assert "test-key" not in str(captured["data"])
 
+    def test_get_signs_query_without_key(self, db_session, monkeypatch):
+        panel = _panel(db_session)
+        captured = {}
+
+        class FakeResponse:
+            status_code = 200
+
+            def json(self):
+                return []
+
+        def fake_get(url, params, timeout, verify, follow_redirects):
+            captured.update({"url": url, "params": params, "follow_redirects": follow_redirects})
+            return FakeResponse()
+
+        monkeypatch.setattr(baota_service.httpx, "get", fake_get)
+        baota_service._get(
+            baota_service._panel_ctx(panel),
+            "/btdocker/project/get_project_list",
+            raw=True,
+        )
+
+        assert captured["url"] == "https://panel.example.com:8888/btdocker/project/get_project_list"
+        assert captured["follow_redirects"] is False
+        request_time = int(captured["params"]["request_time"])
+        assert captured["params"]["request_token"] == baota_service._sign("test-key", request_time)
+        assert "test-key" not in str(captured["params"])
+
 
 class TestSiteParsing:
     def test_normalize_new_response(self):
@@ -129,6 +156,42 @@ class TestSiteParsing:
         ]
         with pytest.raises(baota_service.BaotaError):
             baota_service._resolve_site(sites, "", "example.com")
+
+
+class TestDockerProjects:
+    def test_normalize_maps_server_name_and_filters_invalid(self):
+        body = [
+            {"id": 2, "server_name": "beta"},
+            {"id": "1", "name": "alpha"},
+            {"id": 0, "server_name": "zero"},
+            {"id": "x", "server_name": "bad"},
+            {"server_name": "no-id"},
+            "not-a-dict",
+        ]
+        assert baota_service._normalize_docker_projects(body) == [
+            {"id": 1, "name": "alpha"},
+            {"id": 2, "name": "beta"},
+        ]
+
+    def test_normalize_accepts_wrappers_and_empty(self):
+        item = {"id": 3, "server_name": "gamma"}
+        assert baota_service._normalize_docker_projects({"data": [item]}) == [
+            {"id": 3, "name": "gamma"},
+        ]
+        assert baota_service._normalize_docker_projects({"data": {"list": [item]}}) == [
+            {"id": 3, "name": "gamma"},
+        ]
+        assert baota_service._normalize_docker_projects({"status": True}) == []
+        assert baota_service._normalize_docker_projects([]) == []
+
+    def test_normalize_status_false_is_sanitized(self):
+        with pytest.raises(baota_service.BaotaError) as exc:
+            baota_service._normalize_docker_projects({
+                "status": False,
+                "msg": "IP校验失败 private_key=super-secret",
+            })
+        assert "IP校验失败" in str(exc.value)
+        assert "super-secret" not in str(exc.value)
 
 
 class TestProviderRegistry:
@@ -251,6 +314,58 @@ class TestPanelAPI:
         body = resp.json()
         assert body["sites"] == []
         assert body["orders"][0]["index"] == "abc123"
+
+
+class TestDockerProjectAPI:
+    def test_list_projects_admin(self, client, auth_headers, db_session, monkeypatch):
+        panel = _panel(db_session)
+        captured = {}
+
+        def fake_get(ctx, path, params=None, raw=False):
+            captured.update({"path": path, "raw": raw})
+            return [{"id": 1, "server_name": "nextcloud"}]
+
+        monkeypatch.setattr(baota_service, "_get", fake_get)
+        resp = client.get(
+            f"/api/v1/baota/panels/{panel.id}/docker-projects",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json() == [{"id": 1, "name": "nextcloud"}]
+        assert captured == {"path": "/btdocker/project/get_project_list", "raw": True}
+
+    def test_list_projects_empty_and_error(self, client, auth_headers, db_session, monkeypatch):
+        panel = _panel(db_session)
+        monkeypatch.setattr(baota_service, "_get", lambda *args, **kwargs: [])
+        resp = client.get(
+            f"/api/v1/baota/panels/{panel.id}/docker-projects",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+        def fail(*args, **kwargs):
+            raise baota_service.BaotaError("IP校验失败")
+
+        monkeypatch.setattr(baota_service, "_get", fail)
+        resp = client.get(
+            f"/api/v1/baota/panels/{panel.id}/docker-projects",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 502
+        assert "IP校验失败" in resp.json()["detail"]
+
+    def test_list_projects_non_admin(self, client, db_session):
+        panel = _panel(db_session)
+        user = User(username="docker-viewer", password_hash=hash_password("x"), role="user")
+        db_session.add(user)
+        db_session.commit()
+        token = create_token(user.id, user.username, user.role)
+        resp = client.get(
+            f"/api/v1/baota/panels/{panel.id}/docker-projects",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 403
 
 
 class TestOrders:
