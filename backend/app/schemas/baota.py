@@ -79,9 +79,11 @@ class BaotaSite(BaseModel):
     name: str
 
 
-class BaotaDockerProject(BaseModel):
+class BaotaDockerSite(BaseModel):
     id: int
     name: str
+    type: str = ""
+    project_name: str = ""
 
 
 class BaotaOrder(BaseModel):

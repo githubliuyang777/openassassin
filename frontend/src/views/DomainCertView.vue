@@ -111,71 +111,81 @@
           <n-form-item label="续签方式">
             <n-select v-model:value="editForm.renew_mode" :options="renewModeOptions" @update:value="onRenewModeChange" />
           </n-form-item>
-          <n-form-item :label="editForm.renew_mode === 'docker' ? 'Docker 站点名（可选）' : '部署站点名（可选）'">
-            <n-space vertical style="width: 100%">
-              <n-space>
-                <n-select
-                  v-model:value="editForm.site_name"
-                  :options="siteOptions"
-                  filterable
-                  tag
-                  clearable
-                  :placeholder="editForm.renew_mode === 'docker' ? '留空使用当前域名' : '留空使用 ACME 订单域名'"
-                  style="min-width: 260px"
-                />
-                <n-button
-                  v-if="editForm.renew_mode === 'auto'"
-                  :loading="loadingSites"
-                  :disabled="!editForm.panel_id"
-                  @click="handleLoadSites"
-                >读取站点/订单</n-button>
+          <template v-if="editForm.renew_mode === 'docker'">
+            <n-form-item label="Docker/反向代理站点">
+              <n-space vertical style="width: 100%">
+                <n-space>
+                  <n-input-number
+                    v-if="showManualDockerInput"
+                    v-model:value="editForm.docker_id"
+                    :min="1"
+                    :precision="0"
+                    placeholder="手工填写宝塔 Docker 站点 ID"
+                    style="width: 260px"
+                  />
+                  <n-select
+                    v-else
+                    :value="editForm.docker_id"
+                    :options="dockerSiteOptions"
+                    :loading="loadingDockerSites"
+                    filterable
+                    clearable
+                    placeholder="按域名选择 Docker/反向代理站点"
+                    style="min-width: 360px"
+                    @update:value="onDockerSiteChange"
+                  />
+                  <n-button :loading="loadingDockerSites" :disabled="!editForm.panel_id" @click="loadDockerSites">刷新站点</n-button>
+                  <n-button
+                    v-if="editForm.panel_id && !dockerSitesError && !(dockerSitesLoaded && dockerSites.length === 0)"
+                    quaternary
+                    @click="manualDockerId = !manualDockerId"
+                  >{{ manualDockerId ? '从列表选择' : '手工填写' }}</n-button>
+                </n-space>
+                <span v-if="!editForm.panel_id" style="font-size: 12px; color: #999">请先选择宝塔面板，选择后自动读取 Docker 站点</span>
+                <span v-else-if="dockerSitesError" style="font-size: 12px; color: #d03050">{{ dockerSitesError }}</span>
+                <span v-else-if="dockerSitesLoaded && dockerSites.length === 0" style="font-size: 12px; color: #999">该面板未发现 Docker 站点，可手工填写站点 ID</span>
+                <span v-else-if="savedDockerIdMissing" style="font-size: 12px; color: #d03050">该 ID 不在站点列表中，可能不是 Docker 站点 ID，请重新选择</span>
+                <span v-else-if="dockerSiteNameMismatch" style="font-size: 12px; color: #d03050">
+                  当前站点名与所选站点不一致
+                  <n-button text size="tiny" type="primary" @click="useSelectedDockerSiteName">使用站点名</n-button>
+                </span>
+                <span v-else-if="dockerDomainMismatch" style="font-size: 12px; color: #d03050">所选站点名与监控域名不一致，请确认是否是该域名的 Docker 站点</span>
+                <span v-else style="font-size: 12px; color: #999">
+                  {{ manualDockerId
+                    ? '手工填写 Docker 站点 ID，可随时切回列表选择'
+                    : `从站点列表选择，站点 ID 和站点名自动填充${editForm.docker_id ? '：' + editForm.docker_id : ''}` }}
+                </span>
               </n-space>
-              <span style="font-size: 12px; color: #999">
-                {{ editForm.renew_mode === 'docker'
-                  ? 'Docker/反向代理项目走宝塔 Docker 模块重新申请，站点名留空时使用当前域名'
-                  : '优先按 ACME 订单域名匹配；无订单时按该名称匹配宝塔站点' }}
-              </span>
-            </n-space>
-          </n-form-item>
-          <n-form-item v-if="editForm.renew_mode === 'docker'" label="Docker/反向代理项目">
-            <n-space vertical style="width: 100%">
-              <n-space>
-                <n-input-number
-                  v-if="showManualDockerInput"
-                  v-model:value="editForm.docker_id"
-                  :min="1"
-                  :precision="0"
-                  placeholder="手工填写宝塔 Docker 项目 ID"
-                  style="width: 260px"
-                />
-                <n-select
-                  v-else
-                  v-model:value="editForm.docker_id"
-                  :options="dockerProjectOptions"
-                  :loading="loadingDockerProjects"
-                  filterable
-                  clearable
-                  placeholder="选择 Docker/反向代理项目"
-                  style="min-width: 300px"
-                />
-                <n-button :loading="loadingDockerProjects" :disabled="!editForm.panel_id" @click="loadDockerProjects">刷新项目</n-button>
-                <n-button
-                  v-if="editForm.panel_id && !dockerProjectsError && !(dockerProjectsLoaded && dockerProjects.length === 0)"
-                  quaternary
-                  @click="manualDockerId = !manualDockerId"
-                >{{ manualDockerId ? '从列表选择' : '手工填写' }}</n-button>
+            </n-form-item>
+            <n-form-item v-if="showManualDockerInput" label="Docker 站点名（手工模式）">
+              <n-space vertical style="width: 100%">
+                <n-input v-model:value="editForm.site_name" placeholder="站点主域名，例如 dashboard.example.com" />
+                <span style="font-size: 12px; color: #999">必须与宝塔 Docker 站点的主域名一致；留空则使用当前域名</span>
               </n-space>
-              <span v-if="!editForm.panel_id" style="font-size: 12px; color: #999">请先选择宝塔面板，选择后自动读取 Docker 项目</span>
-              <span v-else-if="dockerProjectsError" style="font-size: 12px; color: #d03050">{{ dockerProjectsError }}</span>
-              <span v-else-if="dockerProjectsLoaded && dockerProjects.length === 0" style="font-size: 12px; color: #999">该面板未发现 Docker Compose 项目，可手工填写项目 ID</span>
-              <span v-else style="font-size: 12px; color: #999">
-                {{ manualDockerId
-                  ? '手工填写 Docker 项目 ID，可随时切回列表选择'
-                  : `从宝塔 Docker 项目列表选择，项目 ID 自动填充${editForm.docker_id ? '：' + editForm.docker_id : ''}` }}
-              </span>
-            </n-space>
-          </n-form-item>
+            </n-form-item>
+          </template>
           <template v-else>
+            <n-form-item label="部署站点名（可选）">
+              <n-space vertical style="width: 100%">
+                <n-space>
+                  <n-select
+                    v-model:value="editForm.site_name"
+                    :options="siteOptions"
+                    filterable
+                    tag
+                    clearable
+                    placeholder="留空使用 ACME 订单域名"
+                    style="min-width: 260px"
+                  />
+                  <n-button
+                    :loading="loadingSites"
+                    :disabled="!editForm.panel_id"
+                    @click="handleLoadSites"
+                  >读取站点/订单</n-button>
+                </n-space>
+                <span style="font-size: 12px; color: #999">优先按 ACME 订单域名匹配；无订单时按该名称匹配宝塔站点</span>
+              </n-space>
+            </n-form-item>
             <n-form-item label="ACME 订单 ID（可选）">
               <n-input v-model:value="editForm.order_index" placeholder="留空自动匹配该域名最新的有效订单" />
             </n-form-item>
@@ -255,11 +265,11 @@ import {
   updateDomain, renewDomainCert,
 } from '@/api/domains'
 import { fetchGroups } from '@/api/notification-groups'
-import { fetchBaotaPanels, createBaotaPanel, updateBaotaPanel, deleteBaotaPanel, testBaotaPanel, fetchBaotaDockerProjects } from '@/api/baota'
+import { fetchBaotaPanels, createBaotaPanel, updateBaotaPanel, deleteBaotaPanel, testBaotaPanel, fetchBaotaDockerSites } from '@/api/baota'
 import { fetchCertProviders } from '@/api/cert-providers'
 import { useAuthStore } from '@/stores/auth'
 import type { DomainInfo, DomainUpdate } from '@/api/domains'
-import type { BaotaPanel, BaotaPanelUpdate, BaotaDockerProject } from '@/api/baota'
+import type { BaotaPanel, BaotaPanelUpdate, BaotaDockerSite } from '@/api/baota'
 import type { CertProvider } from '@/api/cert-providers'
 import type { NotificationGroup } from '@/api/notification-groups'
 import type { DataTableColumn } from 'naive-ui'
@@ -318,29 +328,46 @@ const renewModeOptions = [
   { label: 'Docker/反向代理项目（重新申请）', value: 'docker' },
 ]
 
-const dockerProjects = ref<BaotaDockerProject[]>([])
-const loadingDockerProjects = ref(false)
-const dockerProjectsLoaded = ref(false)
-const dockerProjectsError = ref('')
+const dockerSites = ref<BaotaDockerSite[]>([])
+const loadingDockerSites = ref(false)
+const dockerSitesLoaded = ref(false)
+const dockerSitesError = ref('')
 const manualDockerId = ref(false)
-let dockerProjectsRequestId = 0
-const dockerProjectOptions = computed(() => {
-  const options = dockerProjects.value.map((p) => ({
-    label: p.name ? `${p.name} (#${p.id})` : `项目 #${p.id}`,
-    value: p.id,
+let dockerSitesRequestId = 0
+const dockerSiteOptions = computed(() => {
+  const options = dockerSites.value.map((s) => ({
+    label: [s.name + ` (#${s.id})`, s.type, s.project_name].filter(Boolean).join(' · '),
+    value: s.id,
   }))
   const current = editForm.value.docker_id
   if (current != null && !options.some((o) => o.value === current)) {
-    options.push({ label: `已保存项目 #${current}`, value: current })
+    options.push({ label: `已保存站点 #${current}`, value: current })
   }
   return options
 })
+const selectedDockerSite = computed(() =>
+  dockerSites.value.find((s) => s.id === editForm.value.docker_id) || null
+)
+const dockerSiteNameMismatch = computed(() => {
+  const site = selectedDockerSite.value
+  return !!site && !!editForm.value.site_name &&
+    editForm.value.site_name.toLowerCase() !== site.name.toLowerCase()
+})
+const dockerDomainMismatch = computed(() => {
+  const site = selectedDockerSite.value
+  return !!site && site.name.toLowerCase() !== editForm.value.domain.toLowerCase()
+})
+const savedDockerIdMissing = computed(() =>
+  editForm.value.docker_id != null &&
+  dockerSitesLoaded.value &&
+  !dockerSites.value.some((s) => s.id === editForm.value.docker_id)
+)
 const showManualDockerInput = computed(() =>
   editForm.value.renew_mode === 'docker' &&
   (manualDockerId.value ||
    !editForm.value.panel_id ||
-   dockerProjectsError.value !== '' ||
-   (dockerProjectsLoaded.value && dockerProjects.value.length === 0))
+   dockerSitesError.value !== '' ||
+   (dockerSitesLoaded.value && dockerSites.value.length === 0))
 )
 
 const renewingIds = ref<number[]>([])
@@ -650,55 +677,82 @@ function openEdit(row: DomainInfo) {
   }
   siteOptions.value = config.site_name ? [{ label: config.site_name, value: config.site_name }] : []
   showEditModal.value = true
-  clearDockerProjectState()
+  clearDockerSiteState()
   if (editForm.value.cert_provider === 'baota' && editForm.value.renew_mode === 'docker' && editForm.value.panel_id) {
-    void loadDockerProjects()
+    void loadDockerSites()
   }
 }
 
-function clearDockerProjectState() {
-  dockerProjectsRequestId += 1
+function clearDockerSiteState() {
+  dockerSitesRequestId += 1
   manualDockerId.value = false
-  dockerProjects.value = []
-  dockerProjectsLoaded.value = false
-  dockerProjectsError.value = ''
-  loadingDockerProjects.value = false
+  dockerSites.value = []
+  dockerSitesLoaded.value = false
+  dockerSitesError.value = ''
+  loadingDockerSites.value = false
 }
 
-function isDockerProjectsRequestStale(requestId: number, panelId: number) {
-  return requestId !== dockerProjectsRequestId ||
+function isDockerSitesRequestStale(requestId: number, panelId: number) {
+  return requestId !== dockerSitesRequestId ||
     editForm.value.panel_id !== panelId ||
     editForm.value.renew_mode !== 'docker'
 }
 
-async function loadDockerProjects() {
+function applyDockerSiteMatch() {
+  const domain = editForm.value.domain.trim().toLowerCase()
+  if (!domain) return
+  const current = dockerSites.value.find((s) => s.id === editForm.value.docker_id)
+  if (current) {
+    if (!editForm.value.site_name) editForm.value.site_name = current.name
+    return
+  }
+  const matches = dockerSites.value.filter((s) => s.name.toLowerCase() === domain)
+  if (matches.length === 1) {
+    editForm.value.docker_id = matches[0].id
+    editForm.value.site_name = matches[0].name
+  }
+}
+
+function onDockerSiteChange(siteId: number | null) {
+  editForm.value.docker_id = siteId
+  const site = dockerSites.value.find((s) => s.id === siteId)
+  if (site) editForm.value.site_name = site.name
+}
+
+function useSelectedDockerSiteName() {
+  if (selectedDockerSite.value) editForm.value.site_name = selectedDockerSite.value.name
+}
+
+async function loadDockerSites() {
   const panelId = editForm.value.panel_id
   if (editForm.value.cert_provider !== 'baota' || editForm.value.renew_mode !== 'docker' || !panelId) {
     return
   }
-  const requestId = ++dockerProjectsRequestId
-  loadingDockerProjects.value = true
-  dockerProjectsError.value = ''
+  const requestId = ++dockerSitesRequestId
+  loadingDockerSites.value = true
+  dockerSitesError.value = ''
   try {
-    const resp = await fetchBaotaDockerProjects(panelId)
-    if (isDockerProjectsRequestStale(requestId, panelId)) return
-    dockerProjects.value = resp.data || []
-    dockerProjectsLoaded.value = true
+    const resp = await fetchBaotaDockerSites(panelId)
+    if (isDockerSitesRequestStale(requestId, panelId)) return
+    dockerSites.value = resp.data || []
+    dockerSitesLoaded.value = true
+    applyDockerSiteMatch()
   } catch (e: any) {
-    if (isDockerProjectsRequestStale(requestId, panelId)) return
-    dockerProjects.value = []
-    dockerProjectsLoaded.value = true
-    dockerProjectsError.value = e.message || '读取 Docker 项目列表失败'
+    if (isDockerSitesRequestStale(requestId, panelId)) return
+    dockerSites.value = []
+    dockerSitesLoaded.value = true
+    dockerSitesError.value = e.message || '读取 Docker 站点列表失败'
   } finally {
-    if (requestId === dockerProjectsRequestId) loadingDockerProjects.value = false
+    if (requestId === dockerSitesRequestId) loadingDockerSites.value = false
   }
 }
 
 function onRenewModeChange(value: string) {
+  editForm.value.site_name = ''
   if (value === 'docker') {
-    if (editForm.value.panel_id) void loadDockerProjects()
+    if (editForm.value.panel_id) void loadDockerSites()
   } else {
-    clearDockerProjectState()
+    clearDockerSiteState()
   }
 }
 
@@ -712,7 +766,7 @@ function onProviderChange(value: string) {
     editForm.value.site_path = ''
     editForm.value.cert_auto_renew = false
     siteOptions.value = []
-    clearDockerProjectState()
+    clearDockerSiteState()
   }
 }
 
@@ -723,8 +777,8 @@ function onPanelChange() {
   editForm.value.site_id = null
   editForm.value.site_path = ''
   siteOptions.value = []
-  clearDockerProjectState()
-  if (editForm.value.renew_mode === 'docker') void loadDockerProjects()
+  clearDockerSiteState()
+  if (editForm.value.renew_mode === 'docker') void loadDockerSites()
 }
 
 async function handleLoadSites() {
@@ -756,7 +810,11 @@ async function handleSaveEdit() {
     return
   }
   if (editForm.value.cert_provider === 'baota' && editForm.value.renew_mode === 'docker' && !editForm.value.docker_id) {
-    message.warning('请选择或填写 Docker/反向代理项目')
+    message.warning('请选择或填写 Docker 站点')
+    return
+  }
+  if (editForm.value.cert_provider === 'baota' && editForm.value.renew_mode === 'docker' && dockerSiteNameMismatch.value) {
+    message.warning('当前站点名与所选 Docker 站点不一致，请点击“使用站点名”或重新选择站点')
     return
   }
   editSaving.value = true
