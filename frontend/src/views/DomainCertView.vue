@@ -39,7 +39,7 @@
       :loading="loading"
       :pagination="false"
       size="small"
-      :scroll-x="1900"
+      :scroll-x="1950"
       :row-key="(row: any) => row.id"
       v-model:checked-row-keys="checkedRowKeys"
     />
@@ -258,7 +258,7 @@
 
 <script setup lang="ts">
 import { computed, h, onMounted, onUnmounted, ref } from 'vue'
-import { useMessage, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NH3, NSwitch, NSelect, NDivider, useDialog } from 'naive-ui'
+import { useMessage, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NH3, NSwitch, NSelect, NDivider, NEllipsis, useDialog } from 'naive-ui'
 import { AddOutline, CloudUploadOutline, RefreshOutline, ServerOutline } from '@vicons/ionicons5'
 import {
   fetchDomains, addDomain, batchImportDomains, refreshAllDomains, refreshDomain,
@@ -442,18 +442,23 @@ function daysRemaining(info: DomainInfo) {
   return `${info.days_remaining} 天`
 }
 
-function providerLabel(row: DomainInfo) {
-  if (!row.cert_provider || row.cert_provider === 'none') return '未接入'
-  if (row.cert_provider === 'baota') {
-    const panel = panels.value.find((p) => p.id === row.cert_provider_config?.panel_id)
-    return panel ? `宝塔 · ${panel.name}` : '宝塔面板'
+function providerCell(row: DomainInfo) {
+  const provider = row.cert_provider || 'none'
+  if (provider === 'none') {
+    return h(NTag, { type: 'default', size: 'small' }, () => '未接入')
   }
-  return row.cert_provider
-}
-
-function providerTag(row: DomainInfo) {
-  const integrated = row.cert_provider && row.cert_provider !== 'none'
-  return h(NTag, { type: integrated ? 'info' : 'default', size: 'small' }, () => providerLabel(row))
+  if (provider !== 'baota') {
+    return h(NTag, { type: 'info', size: 'small' }, () => provider)
+  }
+  const panel = panels.value.find((p) => p.id === row.cert_provider_config?.panel_id)
+  if (!panel) {
+    return h(NTag, { type: 'info', size: 'small' }, () => '宝塔面板')
+  }
+  // 面板名最长 128 字符，用省略号限制在列宽内，悬浮显示全名
+  return h('div', { style: 'display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden' }, [
+    h(NTag, { type: 'info', size: 'small', style: { flexShrink: 0 } }, () => '宝塔'),
+    h(NEllipsis, { tooltip: true, style: { minWidth: 0 } }, () => panel.name),
+  ])
 }
 
 function renewStatusType(status: string): 'success' | 'error' | 'info' | 'warning' | 'default' {
@@ -483,7 +488,7 @@ const columns: DataTableColumn<DomainInfo>[] = [
   { title: '生效时间', key: 'ssl_not_before', width: 170, render: (r) => formatTime(r.ssl_not_before) },
   { title: '过期时间', key: 'ssl_not_after', width: 170, render: (r) => formatTime(r.ssl_not_after) },
   { title: '剩余', key: 'days_remaining', width: 80, render: (r) => daysRemaining(r) },
-  { title: '维护平台', key: 'cert_provider', width: 130, render: providerTag },
+  { title: '维护平台', key: 'cert_provider', width: 170, render: providerCell },
   { title: '续签状态', key: 'last_renew_status', width: 110, render: renewStatusTag },
   { title: '告警', key: 'alert_enabled', width: 70,
     render: (row) => h(NSwitch, { size: 'small', value: row.alert_enabled, onUpdateValue: () => handleToggleAlert(row) }),
