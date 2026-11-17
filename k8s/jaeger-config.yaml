@@ -1,0 +1,47 @@
+# Jaeger v2 原生配置（由 kustomization 的 configMapGenerator 生成 key: config.yaml）
+# 单副本 Jaeger v2 直接接收 OTLP，内置存储与 UI；二期需要 tail sampling 时再前置 Collector。
+service:
+  extensions: [jaeger_storage, jaeger_query]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [jaeger_storage_exporter]
+
+extensions:
+  jaeger_query:
+    storage:
+      traces: traces
+    http:
+      endpoint: 0.0.0.0:16686
+    # 同域子路径部署时启用并验证静态资源/API：
+    # base_path: /jaeger
+  jaeger_storage:
+    backends:
+      traces:
+        badger:
+          directories:
+            keys: /badger/keys
+            values: /badger/values
+          # 必须显式关闭，否则 Badger 不落盘
+          ephemeral: false
+          ttl:
+            # trace 保留 7 天；需要更长保留时同步评估 PVC 与内存
+            spans: 168h
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+  batch: {}
+
+exporters:
+  jaeger_storage_exporter:
+    trace_storage: traces

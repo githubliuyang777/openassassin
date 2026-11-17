@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app import tracing
 from app.config import settings
 from app.database import get_db
 from app.middleware.auth_middleware import (
@@ -73,7 +74,8 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
                    action="POST", resource="/api/v1/auth/login",
                    resource_type="认证", detail="用户登录",
                    ip_address=_get_client_ip(request),
-                   user_agent=request.headers.get("User-Agent", ""))
+                   user_agent=request.headers.get("User-Agent", ""),
+                   trace_id=tracing.current_trace_id())
     except Exception:
         pass
 
@@ -128,7 +130,8 @@ def logout(request: Request, user: dict = Depends(get_current_user), db: Session
                    action="POST", resource="/api/v1/auth/logout",
                    resource_type="认证", detail="用户登出",
                    ip_address=_get_client_ip(request),
-                   user_agent=request.headers.get("User-Agent", ""))
+                   user_agent=request.headers.get("User-Agent", ""),
+                   trace_id=tracing.current_trace_id())
     except Exception:
         pass
     return {"message": "已登出"}
@@ -231,6 +234,7 @@ def _audit(db, user_id, username, action, detail, request):
                    action=action, resource=f"/api/v1/auth{action.lower()}",
                    resource_type="认证", detail=detail,
                    ip_address=_get_client_ip(request),
+                   trace_id=tracing.current_trace_id(),
                    user_agent=request.headers.get("User-Agent", ""))
     except Exception:
         pass

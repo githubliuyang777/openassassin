@@ -16,4 +16,5 @@ class AuditLog(Base):
     ip_location = Column(String(128), default="")
     user_agent = Column(String(256), default="")
     status_code = Column(Integer, default=0)
+    trace_id = Column(String(32), default="")
     created_at = Column(DateTime, default=china_now)

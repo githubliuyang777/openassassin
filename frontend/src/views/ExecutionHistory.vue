@@ -16,6 +16,7 @@
 import { ref, h, onMounted } from 'vue'
 import { NH3, NDataTable, NModal, NButton, NTag, NLog, NSkeleton, NSpace } from 'naive-ui'
 import { fetchExecutions, fetchExecutionLog, type Execution } from '@/api/executions'
+import { fetchTracingInfo, buildTraceUrl } from '@/api/system'
 
 const executions = ref<Execution[]>([])
 const loading = ref(false)
@@ -24,6 +25,7 @@ const pageSize = ref(20)
 const total = ref(0)
 const showLog = ref(false)
 const log = ref('')
+const tracing = ref({ enabled: false, ui_url: '' })
 
 type TagType = 'success' | 'error' | 'warning' | 'info' | 'default' | 'primary'
 const statusColors: Record<string, TagType> = {
@@ -40,6 +42,16 @@ const columns: any[] = [
   { title: '触发者', key: 'triggered_by', width: 80 },
   { title: '开始时间', key: 'started_at', width: 170 },
   {
+    title: '链路', key: 'trace_id', width: 110,
+    render: (r: any) => {
+      const href = buildTraceUrl(tracing.value.ui_url, r.trace_id)
+      const label = r.trace_id ? r.trace_id.slice(0, 8) : '-'
+      return href
+        ? h('a', { href, target: '_blank', rel: 'noopener noreferrer', title: r.trace_id }, label)
+        : label
+    },
+  },
+  {
     title: '操作', key: 'actions', width: 100,
     render: (r: any) => h(NSpace, null, () => [
       h(NButton, { size: 'small', onClick: () => handleViewLog(r.id) }, () => '日志'),
@@ -50,9 +62,13 @@ const columns: any[] = [
 async function load() {
   loading.value = true
   try {
-    const res = await fetchExecutions(page.value, pageSize.value)
+    const [res, tracingInfo] = await Promise.all([
+      fetchExecutions(page.value, pageSize.value),
+      fetchTracingInfo().catch(() => ({ enabled: false, ui_url: '' })),
+    ])
     executions.value = res.data.items
     total.value = res.data.total
+    tracing.value = tracingInfo
   } finally {
     loading.value = false
   }

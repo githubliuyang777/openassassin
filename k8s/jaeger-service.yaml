@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger
+  labels:
+    app: jaeger
+spec:
+  selector:
+    app: jaeger
+  ports:
+    # 仅集群内供 backend 上报；不要通过 Ingress 暴露
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http
+    # Jaeger UI，按需通过独立 Ingress + basic auth 暴露
+    - name: query
+      port: 16686
+      targetPort: query

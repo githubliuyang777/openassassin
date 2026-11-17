@@ -37,12 +37,14 @@ import { h, ref, onMounted, reactive } from 'vue'
 import { useMessage, NTag, NButton, NSpace, NFormItem, NInput, NSelect, NDatePicker, NDataTable, NH3 } from 'naive-ui'
 import { fetchAuditLogs } from '@/api/audit-logs'
 import type { AuditLogEntry } from '@/api/audit-logs'
+import { fetchTracingInfo, buildTraceUrl } from '@/api/system'
 import type { DataTableColumn } from 'naive-ui'
 
 const message = useMessage()
 
 const logs = ref<AuditLogEntry[]>([])
 const loading = ref(false)
+const tracing = ref({ enabled: false, ui_url: '' })
 
 const filters = reactive({
   username: '',
@@ -82,6 +84,13 @@ const columns: DataTableColumn<AuditLogEntry>[] = [
   { title: '用户', key: 'username', width: 90 },
   { title: '操作', key: 'action', width: 70, render: (r) => actionTag(r.action) },
   { title: '资源', key: 'resource_type', width: 90, render: (r) => r.resource_type || '-' },
+  { title: '链路', key: 'trace_id', width: 110, render: (r) => {
+      const href = buildTraceUrl(tracing.value.ui_url, r.trace_id)
+      const label = r.trace_id ? r.trace_id.slice(0, 8) : '-'
+      return href
+        ? h('a', { href, target: '_blank', rel: 'noopener noreferrer', title: r.trace_id }, label)
+        : label
+    } },
   { title: '详情', key: 'detail', width: 160, ellipsis: { tooltip: true }, render: (r) => r.detail || '-' },
   { title: '源IP', key: 'ip_address', width: 130, render: (r) => r.ip_address || '-' },
   { title: '归属地', key: 'ip_location', width: 120, ellipsis: { tooltip: true }, render: (r) => r.ip_location || '-' },
@@ -104,10 +113,14 @@ async function loadPage(page: number) {
     if (filters.action) params.action = filters.action
     if (filters.date_from) params.date_from = filters.date_from
     if (filters.date_to) params.date_to = filters.date_to
-    const resp = await fetchAuditLogs(params)
+    const [resp, tracingInfo] = await Promise.all([
+      fetchAuditLogs(params),
+      fetchTracingInfo().catch(() => ({ enabled: false, ui_url: '' })),
+    ])
     logs.value = resp.data.items
     pagination.page = resp.data.page
     pagination.itemCount = resp.data.total
+    tracing.value = tracingInfo
   } catch (e: any) {
     message.error(e.response?.data?.detail || '加载失败')
   } finally {

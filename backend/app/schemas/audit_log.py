@@ -14,6 +14,7 @@ class AuditLogResponse(BaseModel):
     ip_location: str
     user_agent: str
     status_code: int
+    trace_id: str = ""
     created_at: datetime | None = None
 
     model_config = {"from_attributes": True}

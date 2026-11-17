@@ -12,6 +12,7 @@ os.environ["APP_VERSION"] = "test-version"
 os.environ["ENABLE_API_DOCS"] = "false"
 
 os.environ["AUDIT_ENABLED"] = "false"
+os.environ["TRACING_ENABLED"] = "false"
 
 from app.database import Base, get_db, engine
 from app.main import app

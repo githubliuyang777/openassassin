@@ -64,6 +64,7 @@ kubectl apply -k k8s
 | 域名 WHOIS | 域名注册到期监控，告警开关 |
 | 网络测试 | TCP 端口连通性测试 |
 | 审计日志 | 记录所有管理员操作（操作者/时间/IP/详情），180 天保留 |
+| 链路追踪 | OpenTelemetry 采集平台 API、脚本执行、站点巡检与外部调用；执行历史/审计日志深链到 Jaeger（K8s 内置） |
 | 消息通知 | SMTP 邮件配置，密钥到期邮件告警 |
 | 全局告警横幅 | 页面顶部居中显示告警摘要（含主机资源告警），按严重度着色，60s 轮询 |
 | 密码修改 | 登录后通过顶部栏下拉菜单修改密码 |
@@ -72,6 +73,10 @@ kubectl apply -k k8s
 | 双因素认证 | TOTP (Google Authenticator) 二次验证，Email OTP 绑定过渡，8 个一次性备用码 |
 
 > 域名证书的自动续签按域名单独开启：编辑域名 → 选择「宝塔面板」→ 选择面板/站点。宝塔面板需在后台开启 API 接口并把本平台服务器 IP 加入白名单。普通网站优先复用宝塔 ACME 订单（按域名自动匹配最新有效订单，也可手工填写订单 ID），没有订单时才新申请；新申请需要站点 ID/根目录，可在域名编辑的“高级”字段手工填写。Docker/反向代理项目选择「Docker/反向代理项目（重新申请）」后，平台自动读取宝塔 Docker 站点列表并按域名展示，选择站点即自动填充 Docker 站点 ID 和站点名（接口不可用时仍可手工填写站点 ID），再调用宝塔 Docker 模块的重新申请接口，不再依赖站点列表或 ACME 订单。证书进入到期告警阈值后触发，使用 HTTP-01 验证；无法读取证书到期时间时仍会按 72 小时冷却尝试。同一宝塔站点只建议为一个域名开启自动续签。后端通过 Provider 注册表扩展其它证书维护平台，新增平台不需要修改域名表结构。
+
+### 链路追踪
+
+K8s 部署内置 Jaeger v2 接收 OTLP。后端 API、脚本执行、站点巡检与出站 HTTP 调用自动产出 trace；执行历史/审计日志显示 `trace_id` 并深链到 Jaeger UI。Jaeger 默认保留 7 天（Badger + PVC），由 `k8s/jaeger-config.yaml` 调整；Docker Compose / 本地开发默认关闭（`TRACING_ENABLED=false`）。Jaeger UI 无内置登录，必须通过 basic auth 或内网访问，详见 [k8s/README.md](k8s/README.md)。
 
 ## 技术栈
 
@@ -82,6 +87,7 @@ kubectl apply -k k8s
 | 加密 | AES-256-GCM (cryptography) | — |
 | 认证 | JWT (python-jose + bcrypt) + TOTP (pyotp) | — |
 | 沙箱 | Docker SDK for Python | — |
+| 链路追踪 | OpenTelemetry SDK + Jaeger v2 (OTLP) | — |
 | 部署 | Docker Compose / Kubernetes (Kustomize) | — |
 
 ## 目录结构
@@ -91,6 +97,7 @@ openassassin/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py                 # FastAPI 入口
+│   │   ├── tracing.py              # OpenTelemetry 初始化/trace_id/脱敏
 │   │   ├── config.py               # pydantic-settings 配置
 │   │   ├── database.py             # SQLAlchemy engine + session
 │   │   ├── models/                 # User / Script / Credential / Execution
@@ -98,7 +105,7 @@ openassassin/
 │   │   ├── api/                    # REST 路由
 │   │   ├── services/               # 业务逻辑 + 沙箱 + 加密 + 邮件
 │   │   └── middleware/             # JWT Bearer 鉴权
-│   ├── tests/                      # pytest 测试 (262 用例)
+│   ├── tests/                      # pytest 测试 (270 用例)
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
@@ -107,11 +114,11 @@ openassassin/
 │   │   ├── api/                    # Axios client + 模块 API
 │   │   ├── views/                  # 页面组件 (19 个)
 │   │   ├── layouts/                # MainLayout (侧边栏 + 顶栏)
-│   │   └── __tests__/              # vitest 测试 (15 用例)
+│   │   └── __tests__/              # vitest 测试 (17 用例)
 │   └── package.json
 ├── tests/
 │   └── smoke.sh                    # curl 冒烟测试
-├── k8s/                             # Kustomize 清单 (Namespace/Deployment/Service/Ingress)
+├── k8s/                             # Kustomize 清单 (Namespace/Deployment/Service/Ingress/Jaeger)
 ├── deploy.sh                        # 一键构建部署脚本
 ├── docker-compose.yml
 └── .github/workflows/ci.yml        # CI 门禁
@@ -150,6 +157,12 @@ openassassin/
 | `AUDIT_ENABLED` | `true` | 是否启用审计日志 |
 | `AUDIT_LOG_RETENTION_DAYS` | `180` | 审计日志保留天数 |
 | `AUDIT_IP_SOURCE` | `direct` | 审计 IP 来源: direct / forwarded / header 名 |
+| `TRACING_ENABLED` | `false` | 是否启用 OpenTelemetry 链路追踪；K8s 清单默认开启 |
+| `TRACING_UI_URL` | — | 浏览器可访问的 Jaeger UI 地址（如 `https://jaeger.example.com`），留空则不显示链路链接 |
+| `OTEL_SERVICE_NAME` | `openassassin-backend` | 上报的 service.name |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP HTTP 端点；K8s 为 `http://jaeger:4318` |
+| `OTEL_BSP_MAX_QUEUE_SIZE` | `2048` | span 导出队列上限，满后丢弃，不阻塞业务 |
+| `OTEL_BSP_MAX_EXPORT_BATCH_SIZE` | `512` | 单批导出 span 数 |
 
 ### Secret 变量 (支持 Docker Swarm / K8s)
 
@@ -309,6 +322,7 @@ PR → backend-tests  ──┐
 | GET | `/api/v1/notifications/smtp-status` | SMTP 配置状态 | 是 |
 | POST | `/api/v1/notifications/test-email` | 发送测试邮件 | 是 |
 | GET | `/api/v1/system/version` | 当前部署版本 | 管理员 |
+| GET | `/api/v1/system/tracing` | 链路追踪开关与 Jaeger UI 地址 | 是 |
 | GET | `/api/health` | 健康检查 | 否 |
 
 ## License

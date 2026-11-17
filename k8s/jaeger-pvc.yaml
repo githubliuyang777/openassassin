@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jaeger-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # 与 SQLite PVC 一样必须使用块存储（local-path / EBS / Azure Disk / Ceph RBD 等）。
+  # Badger 依赖本地文件锁，不要使用 NFS/EFS/CephFS。

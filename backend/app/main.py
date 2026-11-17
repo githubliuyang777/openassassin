@@ -9,6 +9,7 @@ from app.middleware.audit_middleware import AuditMiddleware
 
 from app.config import settings
 from app.database import engine, Base, SessionLocal
+from app.tracing import setup_tracing, shutdown_tracing
 from app.services.auth_service import get_or_create_admin
 from app.api import auth, scripts, credentials, executions, notifications, domains, domain_whois, hosts, network, audit_logs, subscriptions, alerts, notepads, site_monitors, notification_groups, notification_recipients, dingtalk, agents, overview, system, vulnerabilities, cert_providers, baota
 
@@ -77,6 +78,13 @@ def _migrate_audit_logs_table():
         ("status_code", "INTEGER DEFAULT 0"),
         ("resource_type", "VARCHAR(64) DEFAULT ''"),
         ("ip_location", "VARCHAR(128) DEFAULT ''"),
+        ("trace_id", "VARCHAR(32) DEFAULT ''"),
+    ])
+
+
+def _migrate_executions_table():
+    _migrate("executions", [
+        ("trace_id", "VARCHAR(32) DEFAULT ''"),
     ])
 
 
@@ -153,6 +161,8 @@ def _repair_stale_data():
             ("audit_logs", "user_agent"),
             ("audit_logs", "resource_type"),
             ("audit_logs", "ip_location"),
+            ("audit_logs", "trace_id"),
+            ("executions", "trace_id"),
             ("domains", "last_renew_status"),
             ("domains", "last_renew_error"),
         ]:
@@ -372,6 +382,7 @@ async def lifespan(app: FastAPI):
     _migrate_domain_whois_table()
     _migrate_hosts_table()
     _migrate_audit_logs_table()
+    _migrate_executions_table()
     _migrate_subscriptions_table()
     _migrate_site_monitors_table()
     _repair_stale_data()
@@ -385,14 +396,17 @@ async def lifespan(app: FastAPI):
     agent_task = asyncio.create_task(_host_agent_check_loop())
     vuln_task = asyncio.create_task(_vulnerability_check_loop())
     domain_task = asyncio.create_task(_domain_cert_loop())
-    yield
-    task.cancel()
-    cleanup_task.cancel()
-    sub_task.cancel()
-    site_task.cancel()
-    agent_task.cancel()
-    vuln_task.cancel()
-    domain_task.cancel()
+    try:
+        yield
+    finally:
+        task.cancel()
+        cleanup_task.cancel()
+        sub_task.cancel()
+        site_task.cancel()
+        agent_task.cancel()
+        vuln_task.cancel()
+        domain_task.cancel()
+        shutdown_tracing()
 
 
 API_VERSION = "v1"  # API 契约版本，不是构建版本；构建版本只通过鉴权接口返回
@@ -445,4 +459,10 @@ app.include_router(baota.router, prefix="/api/v1")
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+# Must run after add_middleware(AuditMiddleware): Starlette inserts middleware at
+# the front, so OTel's ASGI middleware ends up outermost and AuditMiddleware can
+# read the request's server span.
+setup_tracing(app)
 

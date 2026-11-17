@@ -12,6 +12,7 @@ class ExecutionResponse(BaseModel):
     exit_code: Optional[int] = None
     triggered_by: str
     credential_ids: list[int] = []
+    trace_id: str = ""
 
     model_config = {"from_attributes": True}
 

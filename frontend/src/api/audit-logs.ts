@@ -12,6 +12,7 @@ export interface AuditLogEntry {
   ip_location: string
   user_agent: string
   status_code: number
+  trace_id: string
   created_at: string
 }
 

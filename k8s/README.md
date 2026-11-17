@@ -94,6 +94,7 @@ TLS：先创建证书 Secret（或由 cert-manager 签发），再取消 `ingres
 kubectl apply -k k8s
 kubectl -n openassassin rollout status deploy/backend
 kubectl -n openassassin rollout status deploy/frontend
+kubectl -n openassassin rollout status deploy/jaeger
 kubectl -n openassassin get pods,svc,pvc,ingress
 ```
 
@@ -132,6 +133,55 @@ open http://localhost:8080
 
 持久化验证：创建一个密钥或修改配置 → `kubectl -n openassassin delete pod -l app=backend`
 → 等待 Pod Ready → 数据仍在。
+
+## 5.1 链路追踪（Jaeger）
+
+主 Kustomize 清单会同时部署 Jaeger v2（`k8s/jaeger-*.yaml`）：
+
+- backend 通过 OTLP HTTP 上报到 `http://jaeger:4318`（集群内 ClusterIP，不对外暴露）
+- Jaeger 使用 Badger + PVC `jaeger-data`（10Gi），默认保留 7 天（`k8s/jaeger-config.yaml` 的 `ttl.spans`）
+- 执行历史、审计日志中的 `trace_id` 可跳转到 Jaeger UI；`TRACING_UI_URL` 为空时只显示不跳转
+
+部署后确认：
+
+```bash
+kubectl -n openassassin rollout status deploy/jaeger
+kubectl -n openassassin get pod,svc,pvc | grep jaeger
+kubectl -n openassassin logs deploy/jaeger --tail=100
+```
+
+### 暴露 Jaeger UI（必须加认证）
+
+Jaeger 没有内置登录，平台的 Bearer JWT 不会随浏览器直达请求携带，因此**禁止无认证暴露公网**。推荐独立域名 + basic auth。`jaeger-ingress.yaml` 默认使用与主 Ingress 一致的 NGINX Inc 注解（`nginx.org/basic-auth-*`）；如果集群用的是社区 ingress-nginx，按文件注释改成 `nginx.ingress.kubernetes.io/auth-*`。
+
+```bash
+# 1. 生成 htpasswd 并创建 Secret（不要提交到仓库）
+htpasswd -c auth admin
+kubectl -n openassassin create secret generic jaeger-basic-auth --from-file=auth
+
+# 2. 修改 k8s/jaeger-ingress.yaml 的 host（以及可选 TLS），然后 apply
+kubectl apply -f k8s/jaeger-ingress.yaml
+
+# 3. 修改 k8s/config.env 的 TRACING_UI_URL 为实际地址（如 https://jaeger.example.com）
+kubectl apply -k k8s
+kubectl -n openassassin rollout restart deploy/backend
+```
+
+如果只用内网/VPN，可不创建 Ingress，通过 `kubectl port-forward svc/jaeger 16686:16686` 临时访问；此时 `TRACING_UI_URL` 可留空。
+
+### 验证链路
+
+1. 登录平台 → 执行历史 → 执行一个脚本（K8s 下日志为 `[SANDBOX_DISABLED]`，但仍有 trace）
+2. 配置了 `TRACING_UI_URL` 时，点击执行记录中的「链路」短 ID，应打开 `TRACING_UI_URL/trace/<trace_id>`，看到 server span 与 `script.execute` 子 span；未配置时 short ID 只展示不跳转，可用 `kubectl port-forward svc/jaeger 16686:16686` 在 Jaeger 中按 ID 查询
+3. 新建/修改任意资源 → 审计日志出现「链路」列
+4. 等待站点巡检周期 → Jaeger 中可见 `site_monitor.check` 及其 HTTPX 子 span
+5. 停止 Jaeger（`kubectl -n openassassin scale deploy/jaeger --replicas=0`）→ 平台请求仍正常，span 在队列满后丢弃，不影响业务
+
+### 保留与容量
+
+- 默认 `ttl.spans: 168h`（7 天），与审计日志 180 天不同；超过 TTL 的深链会 404
+- PVC 10Gi，建议为 `/badger` 磁盘水位单独告警；Badger TTL 删除后的空间回收不是即时的，需要实测
+- 需要更长保留时修改 `k8s/jaeger-config.yaml` 并评估 PVC/内存
 
 ## 6. 升级与回滚
 
@@ -180,6 +230,7 @@ kubectl -n openassassin exec "$POD" -- rm -f /app/data/ops.db.bak
 | 数据 | `./data` 目录 | PVC `openassassin-data`（10Gi） |
 | 入口 | `:8080` | Ingress → frontend:80 |
 | 密钥 | `.env` | Secret `openassassin-secrets` |
+| 链路追踪 | 默认关闭（`TRACING_ENABLED=false`，可接本机 Jaeger） | 内置 Jaeger v2（`TRACING_ENABLED=true`），默认保留 7 天 |
 
 > 沙箱禁用期间，每次点击执行仍会创建一条 `failed` 执行记录（日志含
 > `[SANDBOX_DISABLED]`），仪表盘成功率会因此下降。这是保持执行状态枚举兼容的取舍。
@@ -224,6 +275,10 @@ kubectl -n openassassin get events --sort-by=.lastTimestamp
 | 502 Bad Gateway | 后端未 Ready，或后端 Service 名被改动（必须叫 `backend`） |
 | 脚本执行提示 `[SANDBOX_DISABLED]` | 预期行为，见第 8 节 |
 | 升级后旧凭据无法解密 | `MASTER_KEY` 被更换，需恢复原 Secret |
+| Jaeger Pod CrashLoopBackOff | 查看 `kubectl -n openassassin logs deploy/jaeger`；确认 `jaeger-config` ConfigMap 已挂载、镜像 tag 可拉取 |
+| 执行历史/审计日志没有「链路」链接 | `TRACING_ENABLED` 未开启或 `TRACING_UI_URL` 为空；检查 `GET /api/v1/system/tracing` |
+| Jaeger 查不到旧 trace | 超过 7 天 TTL，或 Jaeger 重建后未挂载 PVC（确认 `ephemeral: false` 与 `jaeger-data` PVC） |
+| Badger 磁盘持续增长 | 调低 `ttl.spans`、扩容 PVC 或降低采样；检查 `/badger` 水位告警 |
 
 ## 10. 安全说明
 
@@ -232,5 +287,7 @@ kubectl -n openassassin get events --sort-by=.lastTimestamp
   只读根文件系统、`seccompProfile: RuntimeDefault`。
 - 后端/前端 Service 均为 ClusterIP，唯一外部入口是 Ingress。
 - `automountServiceAccountToken: false`，应用不需要访问 Kubernetes API。
+- Jaeger 的 OTLP 4318 仅集群内可达；UI 必须 basic auth 或仅内网/VPN，禁止无认证暴露公网。
+- trace 含内部主机名、路径、Pod/Node 名称，按运维敏感数据保护；span 不记录凭据、脚本内容和请求体。
 - 生产环境务必启用 TLS，否则登录密码与 JWT 会以明文传输。
 - `k8s/networkpolicy.yaml` 为可选最小网络策略，启用前确认 CNI 与 kubelet 探针兼容。
