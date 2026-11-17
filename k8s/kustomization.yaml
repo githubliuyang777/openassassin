@@ -8,6 +8,9 @@ resources:
   - pvc.yaml
   - backend-deployment.yaml
   - backend-service.yaml
+  - jaeger-pvc.yaml
+  - jaeger-deployment.yaml
+  - jaeger-service.yaml
   - frontend-deployment.yaml
   - frontend-service.yaml
   - ingress.yaml
@@ -21,6 +24,9 @@ configMapGenerator:
   - name: openassassin-config
     envs:
       - config.env
+  - name: jaeger-config
+    files:
+      - config.yaml=jaeger-config.yaml
 
 images:
   - name: openassassin/openassassin-backend

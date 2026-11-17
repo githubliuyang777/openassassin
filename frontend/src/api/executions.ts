@@ -9,6 +9,7 @@ export interface Execution {
   exit_code: number | null
   triggered_by: string
   credential_ids: number[]
+  trace_id: string
 }
 
 export function fetchExecutions(page = 1, pageSize = 20, scriptId?: number) {

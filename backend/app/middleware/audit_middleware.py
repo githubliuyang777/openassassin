@@ -4,6 +4,7 @@ import logging
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
+from app import tracing
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -154,6 +155,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
         module, resource_type, suffix = _parse_path(scope_path)
         detail = _build_detail(request.method, module, resource_type, suffix)
         resource = _build_resource_str(scope_path)
+        trace_id = tracing.current_trace_id()
 
         response = await call_next(request)
 
@@ -169,6 +171,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
                     ip_address=ip,
                     user_agent=ua,
                     status_code=response.status_code,
+                    trace_id=trace_id,
                 )
             )
 

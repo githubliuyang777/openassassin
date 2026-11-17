@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     audit_ip_source: str = "forwarded"
     audit_log_retention_days: int = 180
     audit_ip_geolocation: bool = False
+    tracing_enabled: bool = False
+    tracing_ui_url: str = ""
     login_failed_limit: int = 5
     login_ip_limit: int = 30
     login_window_seconds: int = 300

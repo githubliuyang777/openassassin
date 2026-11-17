@@ -1,0 +1,38 @@
+# 可选：独立域名暴露 Jaeger UI。
+# Jaeger 没有内置登录，平台 Bearer JWT 不会随浏览器直达请求携带，因此必须
+# 使用 basic auth（或仅内网/VPN）。先创建 htpasswd Secret 再 apply：
+#   htpasswd -c auth admin
+#   kubectl -n openassassin create secret generic jaeger-basic-auth --from-file=auth
+#   kubectl apply -f k8s/jaeger-ingress.yaml
+# 注意：本文件默认不在 kustomization.yaml 中，避免缺少 Secret 时影响主站部署。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jaeger
+  annotations:
+    # 与仓库主 Ingress 保持一致，使用 NGINX Inc（nginx.org/*）注解。
+    # 如集群使用社区 ingress-nginx，改为：
+    #   nginx.ingress.kubernetes.io/auth-type: basic
+    #   nginx.ingress.kubernetes.io/auth-secret: jaeger-basic-auth
+    #   nginx.ingress.kubernetes.io/auth-realm: "Jaeger UI"
+    nginx.org/basic-auth-secret: jaeger-basic-auth
+    nginx.org/basic-auth-realm: "Jaeger UI"
+spec:
+  ingressClassName: nginx
+  rules:
+    # 改成实际域名，并同步修改 k8s/config.env 的 TRACING_UI_URL
+    - host: jaeger.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: jaeger
+                port:
+                  number: 16686
+  # TLS（可选）：先创建/签发证书 Secret，再取消注释
+  # tls:
+  #   - hosts:
+  #       - jaeger.example.com
+  #     secretName: jaeger-tls

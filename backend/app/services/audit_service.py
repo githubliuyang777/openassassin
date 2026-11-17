@@ -30,6 +30,7 @@ def create_log(
     ip_location: str = "",
     user_agent: str = "",
     status_code: int = 0,
+    trace_id: str = "",
 ) -> AuditLog:
     entry = AuditLog(
         user_id=user_id,
@@ -42,6 +43,7 @@ def create_log(
         ip_location=ip_location,
         user_agent=user_agent,
         status_code=status_code,
+        trace_id=trace_id,
     )
     db.add(entry)
     db.commit()

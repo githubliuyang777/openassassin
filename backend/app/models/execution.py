@@ -15,3 +15,4 @@ class Execution(Base):
     log_path = Column(String(512), nullable=True)
     triggered_by = Column(String(64), default="")
     credential_ids = Column(JSON, default=list)
+    trace_id = Column(String(32), default="")

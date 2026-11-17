@@ -62,6 +62,21 @@ spec:
                   name: openassassin-secrets
                   key: SMTP_PASSWORD
                   optional: false
+            # 供 OTEL_RESOURCE_ATTRIBUTES 展开；必须定义在它之前
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.namespace=openassassin,k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(POD_NAMESPACE),k8s.node.name=$(NODE_NAME),k8s.deployment.name=backend"
           envFrom:
             - configMapRef:
                 name: openassassin-config

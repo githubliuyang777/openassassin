@@ -8,6 +8,7 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
+from app import tracing
 from app.database import SessionLocal, china_now
 from app.models.site_monitor import SiteMonitor, SiteCheckResult
 from app.schemas.site_monitor import SiteMonitorCreate, SiteMonitorUpdate
@@ -268,4 +269,9 @@ def check_all_monitors():
     now = china_now()
     for m in monitors:
         if m.last_checked_at is None or (now - m.last_checked_at).total_seconds() >= m.check_interval:
-            run_single_check(m)
+            with tracing.job_span("site_monitor.check", {
+                "monitor.id": m.id,
+                "monitor.type": m.monitor_type,
+            }) as span:
+                result = run_single_check(m)
+                span.set_attribute("monitor.up", result.is_up)

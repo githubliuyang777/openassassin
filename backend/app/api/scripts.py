@@ -1,6 +1,9 @@
 import os
 from fastapi import APIRouter, Depends, HTTPException, status
+from opentelemetry.trace import Status, StatusCode
 from sqlalchemy.orm import Session
+
+from app import tracing
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
@@ -103,13 +106,24 @@ def execute_script_endpoint(
     os.makedirs(settings.log_dir, exist_ok=True)
     log_path = os.path.join(settings.log_dir, f"{execution.id}.log")
 
-    result = execute_script(
-        script_type=s.type,
-        content=s.content,
-        timeout=s.timeout,
-        env_vars=s.env_vars or {},
-        credential_values=credential_values,
-    )
+    with tracing.job_span("script.execute", {
+        "script.id": script_id,
+        "script.type": s.type,
+        "execution.id": execution.id,
+        "sandbox.enabled": settings.sandbox_enabled,
+    }) as span:
+        result = execute_script(
+            script_type=s.type,
+            content=s.content,
+            timeout=s.timeout,
+            env_vars=s.env_vars or {},
+            credential_values=credential_values,
+        )
+        span.set_attribute("execution.status", result["status"])
+        span.set_attribute("execution.exit_code", result["exit_code"])
+        if result["status"] != "success":
+            span.set_status(Status(StatusCode.ERROR))
+        trace_id = tracing.current_trace_id()
 
     with open(log_path, "w") as f:
         f.write(result["log"])
@@ -117,6 +131,7 @@ def execute_script_endpoint(
     execution.status = result["status"]
     execution.exit_code = result["exit_code"]
     execution.log_path = log_path
+    execution.trace_id = trace_id
     db.commit()
     db.refresh(execution)
 
