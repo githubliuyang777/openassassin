@@ -30,6 +30,12 @@ spec:
         - name: frontend
           image: openassassin/openassassin-frontend:latest
           imagePullPolicy: Always
+          env:
+            # 前端 nginx 的 OTel gRPC 端点；仅追踪 /api/
+            - name: OTEL_EXPORTER_ENDPOINT
+              value: "jaeger:4317"
+            - name: OTEL_TRACE_MODE
+              value: "on"
           ports:
             - name: http
               containerPort: 80
@@ -62,6 +68,9 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
           volumeMounts:
+            # entrypoint 用 envsubst 渲染模板到 /etc/nginx/conf.d，只读根文件系统下需要可写挂载
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
             - name: nginx-cache
               mountPath: /var/cache/nginx
             - name: nginx-run
@@ -69,6 +78,8 @@ spec:
             - name: tmp
               mountPath: /tmp
       volumes:
+        - name: nginx-conf
+          emptyDir: {}
         - name: nginx-cache
           emptyDir: {}
         - name: nginx-run
