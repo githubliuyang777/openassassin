@@ -1,3 +1,12 @@
+# 前端 nginx 也是反向代理的一跳；仅 /api/ 生成 span，静态资源不产生噪音。
+otel_exporter {
+    # gRPC 端点；K8s 下为 jaeger:4317，Compose 默认 127.0.0.1:4317
+    endpoint ${OTEL_EXPORTER_ENDPOINT};
+}
+otel_service_name openassassin-frontend;
+# 默认是 ignore；代理必须 propagate 才能 extract + inject W3C traceparent
+otel_trace_context propagate;
+
 server {
     listen 80;
     server_name localhost;
@@ -19,6 +28,8 @@ server {
     }
 
     location /api/ {
+        # 仅 API 请求生成前端 span；静态页面由 Ingress span 覆盖
+        otel_trace ${OTEL_TRACE_MODE};
         proxy_pass http://backend:8000;
         proxy_http_version 1.1;
         proxy_set_header Host $host;

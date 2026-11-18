@@ -64,7 +64,7 @@ kubectl apply -k k8s
 | 域名 WHOIS | 域名注册到期监控，告警开关 |
 | 网络测试 | TCP 端口连通性测试 |
 | 审计日志 | 记录所有管理员操作（操作者/时间/IP/详情），180 天保留 |
-| 链路追踪 | OpenTelemetry 采集平台 API、脚本执行、站点巡检与外部调用；执行历史/审计日志深链到 Jaeger（K8s 内置） |
+| 链路追踪 | OpenTelemetry 采集 Ingress、前端代理、平台 API、脚本执行、站点巡检与外部调用；执行历史/审计日志深链到 Jaeger（K8s 内置） |
 | 消息通知 | SMTP 邮件配置，密钥到期邮件告警 |
 | 全局告警横幅 | 页面顶部居中显示告警摘要（含主机资源告警），按严重度着色，60s 轮询 |
 | 密码修改 | 登录后通过顶部栏下拉菜单修改密码 |
@@ -76,7 +76,7 @@ kubectl apply -k k8s
 
 ### 链路追踪
 
-K8s 部署内置 Jaeger v2 接收 OTLP。后端 API、脚本执行、站点巡检与出站 HTTP 调用自动产出 trace；执行历史/审计日志显示 `trace_id` 并深链到 Jaeger UI。Jaeger 默认保留 7 天（Badger + PVC），由 `k8s/jaeger-config.yaml` 调整；Docker Compose / 本地开发默认关闭（`TRACING_ENABLED=false`）。Jaeger UI 无内置登录，必须通过 basic auth 或内网访问，详见 [k8s/README.md](k8s/README.md)。
+K8s 部署内置 Jaeger v2 接收 OTLP。后端 API、脚本执行、站点巡检与出站 HTTP 调用自动产出 trace；K8s 下 Ingress Controller 和前端 nginx 也通过 OTel 上报，完整链路为 `nginx-ingress → openassassin-frontend → openassassin-backend`。执行历史/审计日志显示 `trace_id` 并深链到 Jaeger UI。Jaeger 默认保留 7 天（Badger + PVC），由 `k8s/jaeger-config.yaml` 调整；Docker Compose / 本地开发默认关闭（`TRACING_ENABLED=false`）。Jaeger UI 无内置登录，必须通过 basic auth 或内网访问，详见 [k8s/README.md](k8s/README.md)。
 
 ## 技术栈
 

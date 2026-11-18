@@ -32,6 +32,9 @@ extensions:
 receivers:
   otlp:
     protocols:
+      # Ingress Controller 和前端 nginx 的 ngx_otel_module 只支持 OTLP/gRPC
+      grpc:
+        endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
 

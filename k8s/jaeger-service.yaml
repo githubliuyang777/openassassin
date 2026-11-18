@@ -8,6 +8,10 @@ spec:
   selector:
     app: jaeger
   ports:
+    # 仅集群内供 Ingress Controller / frontend 上报；不要通过 Ingress 暴露
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
     # 仅集群内供 backend 上报；不要通过 Ingress 暴露
     - name: otlp-http
       port: 4318

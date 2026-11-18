@@ -26,8 +26,8 @@ spec:
         - protocol: TCP
           port: 8000
 ---
-# 链路追踪组件访问控制：backend 只能上报 OTLP，UI 只允许 Ingress 访问。
-# ingress-nginx 的 namespace label 因安装方式不同可能不同，启用前请确认。
+# 链路追踪组件访问控制：backend 只能上报 OTLP/HTTP，Ingress/frontend 上报 OTLP/gRPC，
+# UI 只允许 Ingress 访问。NGINX Ingress Controller 安装在 nginx-ingress namespace。
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -50,7 +50,16 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: ingress-nginx
+              kubernetes.io/metadata.name: nginx-ingress
       ports:
         - protocol: TCP
+          port: 4317
+        - protocol: TCP
           port: 16686
+    - from:
+        - podSelector:
+            matchLabels:
+              app: frontend
+      ports:
+        - protocol: TCP
+          port: 4317

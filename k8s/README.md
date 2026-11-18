@@ -138,15 +138,26 @@ open http://localhost:8080
 
 主 Kustomize 清单会同时部署 Jaeger v2（`k8s/jaeger-*.yaml`）：
 
-- backend 通过 OTLP HTTP 上报到 `http://jaeger:4318`（集群内 ClusterIP，不对外暴露）
+- backend 通过 OTLP HTTP 上报到 `http://jaeger:4318`
+- Ingress Controller 和前端 nginx 通过 OTLP/gRPC 上报到 `jaeger:4317`
+- 前端只有 `/api/` 生成 span，静态资源不产生前端 span
+- 完整链路：`nginx-ingress → openassassin-frontend → openassassin-backend`
 - Jaeger 使用 Badger + PVC `jaeger-data`（10Gi），默认保留 7 天（`k8s/jaeger-config.yaml` 的 `ttl.spans`）
 - 执行历史、审计日志中的 `trace_id` 可跳转到 Jaeger UI；`TRACING_UI_URL` 为空时只显示不跳转
+
+> Ingress 的 OTel 开关在基础设施仓库 `clusters/ack/nginx-ingress.yaml`：
+> `otel-exporter-endpoint`、`otel-service-name`、`otel-trace-in-http`、
+> `otel-trace-context: propagate`。前端镜像必须使用 `nginx:*-alpine-otel`
+> （已内置 `ngx_otel_module`），Deployment 通过 `OTEL_EXPORTER_ENDPOINT`
+> 和 `OTEL_TRACE_MODE` 控制；Docker Compose 默认 `off`。
 
 部署后确认：
 
 ```bash
 kubectl -n openassassin rollout status deploy/jaeger
 kubectl -n openassassin get pod,svc,pvc | grep jaeger
+kubectl -n openassassin get svc jaeger
+# 应包含 4317（gRPC）、4318（HTTP）、16686（UI）
 kubectl -n openassassin logs deploy/jaeger --tail=100
 ```
 
@@ -156,8 +167,9 @@ Jaeger 没有内置登录，平台的 Bearer JWT 不会随浏览器直达请求�
 
 ```bash
 # 1. 生成 htpasswd 并创建 Secret（不要提交到仓库）
+# NGINX Inc 的 basic auth Secret 键名必须是 htpasswd，不能是 auth
 htpasswd -c auth admin
-kubectl -n openassassin create secret generic jaeger-basic-auth --from-file=auth
+kubectl -n openassassin create secret generic jaeger-basic-auth --from-file=htpasswd=auth
 
 # 2. 修改 k8s/jaeger-ingress.yaml 的 host（以及可选 TLS），然后 apply
 kubectl apply -f k8s/jaeger-ingress.yaml
@@ -171,11 +183,20 @@ kubectl -n openassassin rollout restart deploy/backend
 
 ### 验证链路
 
-1. 登录平台 → 执行历史 → 执行一个脚本（K8s 下日志为 `[SANDBOX_DISABLED]`，但仍有 trace）
-2. 配置了 `TRACING_UI_URL` 时，点击执行记录中的「链路」短 ID，应打开 `TRACING_UI_URL/trace/<trace_id>`，看到 server span 与 `script.execute` 子 span；未配置时 short ID 只展示不跳转，可用 `kubectl port-forward svc/jaeger 16686:16686` 在 Jaeger 中按 ID 查询
-3. 新建/修改任意资源 → 审计日志出现「链路」列
-4. 等待站点巡检周期 → Jaeger 中可见 `site_monitor.check` 及其 HTTPX 子 span
-5. 停止 Jaeger（`kubectl -n openassassin scale deploy/jaeger --replicas=0`）→ 平台请求仍正常，span 在队列满后丢弃，不影响业务
+1. 发送带固定 `traceparent` 的请求，例如：
+   ```bash
+   TRACE_ID=$(python -c 'import secrets; print(secrets.token_hex(16))')
+   SPAN_ID=$(python -c 'import secrets; print(secrets.token_hex(8))')
+   curl -H "traceparent: 00-$TRACE_ID-$SPAN_ID-01" \
+     https://<host>/api/v1/system/tracing
+   ```
+   Jaeger 中应同时出现 `nginx-ingress`、`openassassin-frontend`、
+   `openassassin-backend` 三个 service，且父子关系依次嵌套。
+2. 登录平台 → 执行历史 → 执行一个脚本（K8s 下日志为 `[SANDBOX_DISABLED]`，但仍有 trace）
+3. 配置了 `TRACING_UI_URL` 时，点击执行记录中的「链路」短 ID，应打开 `TRACING_UI_URL/trace/<trace_id>`，看到 server span 与 `script.execute` 子 span；未配置时 short ID 只展示不跳转，可用 `kubectl port-forward svc/jaeger 16686:16686` 在 Jaeger 中按 ID 查询
+4. 新建/修改任意资源 → 审计日志出现「链路」列
+5. 等待站点巡检周期 → Jaeger 中可见 `site_monitor.check` 及其 HTTPX 子 span
+6. 停止 Jaeger（`kubectl -n openassassin scale deploy/jaeger --replicas=0`）→ 平台请求仍正常，span 在队列满后丢弃，不影响业务
 
 ### 保留与容量
 
@@ -271,11 +292,14 @@ kubectl -n openassassin get events --sort-by=.lastTimestamp
 | Pod 报 `secret "openassassin-secrets" not found` 或 `couldn't find key ...` | 未创建 Secret 或缺键，按第 2 步创建四个键 |
 | backend CrashLoopBackOff，日志提示只读文件系统 | 确认 PVC 挂载在 `/app/data`；如仍失败，将 `readOnlyRootFilesystem` 改为 `false` |
 | frontend CrashLoopBackOff | 检查 `backend` Service 是否存在；或先将 frontend 的 `readOnlyRootFilesystem` 改为 `false` |
+| frontend 日志提示 `unknown directive "otel_exporter"` | 前端镜像不是 `nginx:*-alpine-otel`，或 `load_module` 未生效；确认镜像与 Dockerfile |
+| frontend 启动失败，提示 `/etc/nginx/conf.d` 只读 | 确认 `nginx-conf` emptyDir 已挂载到 `/etc/nginx/conf.d` |
 | Ingress 404 | 检查 DNS 是否指向入口、`IngressClass/nginx` 是否存在 |
 | 502 Bad Gateway | 后端未 Ready，或后端 Service 名被改动（必须叫 `backend`） |
 | 脚本执行提示 `[SANDBOX_DISABLED]` | 预期行为，见第 8 节 |
 | 升级后旧凭据无法解密 | `MASTER_KEY` 被更换，需恢复原 Secret |
 | Jaeger Pod CrashLoopBackOff | 查看 `kubectl -n openassassin logs deploy/jaeger`；确认 `jaeger-config` ConfigMap 已挂载、镜像 tag 可拉取 |
+| Jaeger 只有 backend，没有 Ingress/frontend span | 检查 infra 的 `otel-exporter-endpoint`、`otel-trace-in-http`、`otel-trace-context: propagate`，Jaeger 4317 是否可达，前端 `OTEL_TRACE_MODE=on` |
 | 执行历史/审计日志没有「链路」链接 | `TRACING_ENABLED` 未开启或 `TRACING_UI_URL` 为空；检查 `GET /api/v1/system/tracing` |
 | Jaeger 查不到旧 trace | 超过 7 天 TTL，或 Jaeger 重建后未挂载 PVC（确认 `ephemeral: false` 与 `jaeger-data` PVC） |
 | Badger 磁盘持续增长 | 调低 `ttl.spans`、扩容 PVC 或降低采样；检查 `/badger` 水位告警 |
@@ -287,7 +311,7 @@ kubectl -n openassassin get events --sort-by=.lastTimestamp
   只读根文件系统、`seccompProfile: RuntimeDefault`。
 - 后端/前端 Service 均为 ClusterIP，唯一外部入口是 Ingress。
 - `automountServiceAccountToken: false`，应用不需要访问 Kubernetes API。
-- Jaeger 的 OTLP 4318 仅集群内可达；UI 必须 basic auth 或仅内网/VPN，禁止无认证暴露公网。
+- Jaeger 的 OTLP 4317/4318 仅集群内可达；UI 必须 basic auth 或仅内网/VPN，禁止无认证暴露公网。
 - trace 含内部主机名、路径、Pod/Node 名称，按运维敏感数据保护；span 不记录凭据、脚本内容和请求体。
 - 生产环境务必启用 TLS，否则登录密码与 JWT 会以明文传输。
 - `k8s/networkpolicy.yaml` 为可选最小网络策略，启用前确认 CNI 与 kubelet 探针兼容。
