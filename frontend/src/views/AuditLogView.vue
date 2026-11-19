@@ -20,6 +20,7 @@
     </n-space>
 
     <n-data-table
+      remote
       :columns="columns"
       :data="logs"
       :loading="loading"

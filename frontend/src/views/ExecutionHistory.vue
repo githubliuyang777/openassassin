@@ -2,7 +2,7 @@
   <div>
     <n-h3 style="margin-bottom: 16px">执行历史</n-h3>
 
-    <n-data-table :columns="columns" :data="executions" :loading="loading" :row-key="(r: any) => r.id"
+    <n-data-table remote :columns="columns" :data="executions" :loading="loading" :row-key="(r: any) => r.id"
       :pagination="{ page: page, pageSize: pageSize, itemCount: total, onChange: onPageChange }" />
 
     <n-modal v-model:show="showLog" title="执行日志" style="width: 800px">
