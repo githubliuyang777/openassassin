@@ -16,6 +16,7 @@
         @update:value="loadList"
       />
       <n-data-table
+        remote
         :columns="columns"
         :data="items"
         :loading="loading"

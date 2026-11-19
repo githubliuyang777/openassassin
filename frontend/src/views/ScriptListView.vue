@@ -11,7 +11,7 @@
     <n-input v-model:value="search" placeholder="搜索脚本名称..." clearable style="width: 300px; margin-bottom: 16px"
       @update:value="loadScripts" />
 
-    <n-data-table :columns="columns" :data="scripts" :loading="loading" :row-key="(r: any) => r.id"
+    <n-data-table remote :columns="columns" :data="scripts" :loading="loading" :row-key="(r: any) => r.id"
       :pagination="{ page: page, pageSize: pageSize, itemCount: total, onChange: onPageChange }" />
 
     <n-modal v-model:show="showDelete" preset="card" title="确认删除" style="width: 400px">
