@@ -74,6 +74,7 @@ def update_monitor(db: Session, monitor: SiteMonitor, data: SiteMonitorUpdate) -
 
 
 def delete_monitor(db: Session, monitor: SiteMonitor) -> None:
+    _clear_down_alert_retry(monitor.id)
     db.delete(monitor)
     db.commit()
 

@@ -54,6 +54,22 @@ class TestSmtpStatus:
         assert data["fallback"]["configured"] is False
         assert data["fallback"]["host"] is None
 
+    def test_legacy_configured_means_primary(self, client, auth_headers, monkeypatch):
+        monkeypatch.setattr(settings, "smtp_host", "")
+        monkeypatch.setattr(settings, "smtp_fallback_host", "smtp.fallback.test")
+        email_service.reset_email_state()
+
+        data = client.get(
+            "/api/v1/notifications/smtp-status", headers=auth_headers,
+        ).json()
+
+        assert data["configured"] is False
+        assert data["alert_configured"] is True
+        assert data["transactional_configured"] is False
+        assert data["alert_failover_enabled"] is True
+        assert data["host"] is None
+        assert data["fallback"]["configured"] is True
+
 
 class TestTestEmail:
     def test_requires_auth(self, client):

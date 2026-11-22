@@ -403,7 +403,7 @@ class TestConnectionAndStatus:
         monkeypatch.setattr(settings, "smtp_alert_circuit_failures", 1)
         _configure(monkeypatch, primary=True, fallback=True)
         plans["smtp.primary.test"] = {
-            "connect_error": OSError("auth rejected primary-secret")
+            "connect_error": OSError("auth rejected primary-secret for primary-user")
         }
 
         email_service.send_alert_email("a@example.com", "s", "b")

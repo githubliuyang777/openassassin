@@ -206,6 +206,14 @@ class TestSiteMonitorAlertState:
         )
         assert site_monitor_service._send_up_alert(db_session, monitor) is True
 
+    def test_delete_monitor_clears_pending_retry(self, db_session):
+        monitor = _monitor(db_session)
+        site_monitor_service._down_alert_retry_at[monitor.id] = time.monotonic()
+
+        site_monitor_service.delete_monitor(db_session, monitor)
+
+        assert monitor.id not in site_monitor_service._down_alert_retry_at
+
     def test_down_alert_retries_on_later_check(self, db_session, monkeypatch):
         monitor = _monitor(db_session)
         calls = []

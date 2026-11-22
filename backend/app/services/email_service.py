@@ -256,8 +256,9 @@ def _is_recipient_error(exc: Exception) -> bool:
 
 def _safe_message(provider: EmailProvider, exc: Exception) -> str:
     text = f"{type(exc).__name__}: {exc}"
-    if provider.password:
-        text = text.replace(provider.password, "***")
+    for secret in (provider.password, provider.username):
+        if secret:
+            text = text.replace(secret, "***")
     return text[:200]
 
 
@@ -566,7 +567,8 @@ def get_smtp_status() -> dict:
             active_circuit = name
             break
     return {
-        "configured": primary.is_configured or fallback.is_configured,
+        # Legacy field: old clients used this to mean the primary SMTP.
+        "configured": primary.is_configured,
         "alert_configured": primary.is_configured or fallback.is_configured,
         "transactional_configured": primary.is_configured,
         "alert_failover_enabled": fallback.is_configured,
