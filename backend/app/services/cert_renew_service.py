@@ -88,9 +88,14 @@ def _notify(domain_id: int, success: bool, detail: str) -> None:
             f"维护平台: {dom.cert_provider}\n"
             f"{detail}"
         )
-        send_group_notification(
+        result = send_group_notification(
             db, dom.notification_group_id, settings.alert_email, subject, body,
         )
+        if result is not None and not result.delivered:
+            logger.warning(
+                "cert renewal notification for %s was not delivered: %s",
+                dom.domain, "; ".join(result.errors),
+            )
     except Exception as exc:
         logger.warning("cert renewal notification failed: %s", type(exc).__name__)
     finally:

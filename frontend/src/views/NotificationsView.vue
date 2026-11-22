@@ -5,16 +5,54 @@
     <!-- SMTP Status -->
     <n-card title="SMTP 配置状态" style="margin-bottom: 24px">
       <n-descriptions v-if="smtp" bordered :column="1" label-placement="left">
-        <n-descriptions-item label="状态">
-          <n-tag :type="smtp.configured ? 'success' : 'error'">
-            {{ smtp.configured ? '已配置' : '未配置' }}
+        <n-descriptions-item label="告警故障转移">
+          <n-tag :type="smtp.alert_failover_enabled ? 'success' : 'default'">
+            {{ smtp.alert_failover_enabled ? '已启用（主 → 备）' : '未启用（仅主）' }}
           </n-tag>
         </n-descriptions-item>
-        <n-descriptions-item label="SMTP 服务器">{{ smtp.host || '-' }}</n-descriptions-item>
-        <n-descriptions-item label="端口">{{ smtp.port || '-' }}</n-descriptions-item>
-        <n-descriptions-item label="发件人">{{ smtp.from || '-' }}</n-descriptions-item>
-        <n-descriptions-item label="TLS">{{ smtp.use_tls ? '启用' : '未启用' }}</n-descriptions-item>
+        <n-descriptions-item label="当前熔断">
+          {{ smtp.active_circuit ? providerLabel(smtp.active_circuit) : '无' }}
+        </n-descriptions-item>
+        <n-descriptions-item label="主 SMTP">
+          <n-space vertical size="small">
+            <n-space size="small">
+              <n-tag :type="smtp.primary.configured ? 'success' : 'error'" size="small">
+                {{ smtp.primary.configured ? '已配置' : '未配置' }}
+              </n-tag>
+              <n-tag v-if="smtp.primary.configured" :type="healthType(smtp.primary.health)" size="small">
+                {{ healthLabel(smtp.primary.health) }}
+              </n-tag>
+            </n-space>
+            <div>服务器：{{ smtp.primary.host || '-' }}</div>
+            <div>端口：{{ smtp.primary.port ?? '-' }}</div>
+            <div>发件人：{{ smtp.primary.from || '-' }}</div>
+            <div>TLS：{{ smtp.primary.use_tls ? '启用' : '未启用' }}</div>
+            <div v-if="smtp.primary.last_success_at">最近成功：{{ smtp.primary.last_success_at }}</div>
+            <div v-if="smtp.primary.last_error">最近错误：{{ smtp.primary.last_error }}</div>
+          </n-space>
+        </n-descriptions-item>
+        <n-descriptions-item label="备用 SMTP">
+          <n-space vertical size="small">
+            <n-space size="small">
+              <n-tag :type="smtp.fallback.configured ? 'success' : 'default'" size="small">
+                {{ smtp.fallback.configured ? '已配置' : '未配置' }}
+              </n-tag>
+              <n-tag v-if="smtp.fallback.configured" :type="healthType(smtp.fallback.health)" size="small">
+                {{ healthLabel(smtp.fallback.health) }}
+              </n-tag>
+            </n-space>
+            <div>服务器：{{ smtp.fallback.host || '-' }}</div>
+            <div>端口：{{ smtp.fallback.port ?? '-' }}</div>
+            <div>发件人：{{ smtp.fallback.from || '-' }}</div>
+            <div>TLS：{{ smtp.fallback.use_tls ? '启用' : '未启用' }}</div>
+            <div v-if="smtp.fallback.last_success_at">最近成功：{{ smtp.fallback.last_success_at }}</div>
+            <div v-if="smtp.fallback.last_error">最近错误：{{ smtp.fallback.last_error }}</div>
+          </n-space>
+        </n-descriptions-item>
       </n-descriptions>
+      <div v-if="smtp" style="margin-top: 8px; color: #888; font-size: 12px">
+        密码重置/MFA 验证码仍只使用主 SMTP；备用 SMTP 仅用于告警邮件。
+      </div>
       <n-spin v-else size="small" />
     </n-card>
 
@@ -23,6 +61,9 @@
       <n-form ref="formRef" :model="form" :rules="rules" label-placement="top">
         <n-form-item path="email" label="收件人邮箱地址">
           <n-input v-model:value="form.email" placeholder="请输入收件人邮箱，例如 user@example.com" />
+        </n-form-item>
+        <n-form-item path="provider" label="发送通道">
+          <n-select v-model:value="form.provider" :options="providerOptions" style="width: 220px" />
         </n-form-item>
       </n-form>
       <n-button type="primary" :loading="sending" @click="handleSend">
@@ -78,19 +119,28 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import {
   NButton, NCard, NDescriptions, NDescriptionsItem, NTag, NSpace,
-  NForm, NFormItem, NInput, NAlert, NH2, NSpin, NSwitch,
+  NForm, NFormItem, NInput, NAlert, NH2, NSpin, NSwitch, NSelect,
 } from 'naive-ui'
-import { getSmtpStatus, sendTestEmail, getDingTalkStatus, getDingTalkConfig, updateDingTalkConfig, testDingTalk } from '@/api/notifications'
+import {
+  getSmtpStatus, sendTestEmail, getDingTalkStatus, getDingTalkConfig,
+  updateDingTalkConfig, testDingTalk,
+} from '@/api/notifications'
+import type { CircuitHealth, SmtpStatus, SmtpTestProvider } from '@/api/notifications'
 
 const formRef = ref()
 const sending = ref(false)
-const smtp = ref<any>(null)
+const smtp = ref<SmtpStatus | null>(null)
 const result = ref<{ type: 'success' | 'error'; title: string; message: string } | null>(null)
 
-const form = ref({ email: '' })
+const form = ref<{ email: string; provider: SmtpTestProvider }>({ email: '', provider: 'auto' })
+const providerOptions = computed(() => [
+  { label: '自动（主 → 备）', value: 'auto' },
+  { label: '主 SMTP', value: 'primary' },
+  { label: '备用 SMTP', value: 'fallback', disabled: !smtp.value?.fallback.configured },
+])
 const rules = {
   email: [
     { required: true, message: '请输入收件人邮箱' },
@@ -107,13 +157,29 @@ onMounted(async () => {
   await loadDingTalk()
 })
 
+function healthType(health: CircuitHealth) {
+  if (health === 'closed') return 'success'
+  if (health === 'half_open') return 'warning'
+  return 'error'
+}
+
+function healthLabel(health: CircuitHealth) {
+  if (health === 'closed') return '正常'
+  if (health === 'half_open') return '探测中'
+  return '熔断'
+}
+
+function providerLabel(provider: 'primary' | 'fallback') {
+  return provider === 'primary' ? '主 SMTP' : '备用 SMTP'
+}
+
 async function handleSend() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
   sending.value = true
   result.value = null
   try {
-    const data = await sendTestEmail(form.value.email)
+    const data = await sendTestEmail(form.value.email, form.value.provider)
     result.value = { type: 'success', title: '发送成功', message: data.message }
   } catch (e: any) {
     result.value = { type: 'error', title: '发送失败', message: e.message || '未知错误' }

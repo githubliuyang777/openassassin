@@ -116,18 +116,16 @@ def send_test_message(db: Session) -> dict:
     return send_text(config.webhook_url, config.secret, content)
 
 
-def send_alert(db: Session, at_mobiles: list[str] | None, title: str, body: str) -> None:
-    """Send an alert message through DingTalk. Silently skips if not configured.
+def send_alert(db: Session, at_mobiles: list[str] | None, title: str, body: str) -> bool:
+    """Send an alert message through DingTalk.
 
-    Args:
-        db: Database session.
-        at_mobiles: List of mobile numbers to @-mention, or None for no @-mentions.
-        title: Alert title (used as bold header in the message).
-        body: Alert body text.
+    Returns False when DingTalk is disabled/unconfigured. Delivery errors are
+    propagated so notification_service can record them without leaking the
+    webhook URL or secret.
     """
     config = get_config(db)
     if not config.webhook_url or not config.is_enabled:
-        return
+        return False
 
     # Build DingTalk markdown message
     at_str = ""
@@ -135,8 +133,5 @@ def send_alert(db: Session, at_mobiles: list[str] | None, title: str, body: str)
         at_str = "\n> @" + " @".join(at_mobiles)
 
     content = f"【告警】{title}\n\n{body}{at_str}"
-
-    try:
-        send_text(config.webhook_url, config.secret, content)
-    except Exception as e:
-        logger.warning("DingTalk alert delivery failed: %s", e)
+    send_text(config.webhook_url, config.secret, content)
+    return True

@@ -34,7 +34,8 @@ kubectl -n openassassin create secret generic openassassin-secrets \
   --from-literal=JWT_SECRET="$(openssl rand -hex 32)" \
   --from-literal=MASTER_KEY="$(openssl rand -hex 32)" \
   --from-literal=ADMIN_DEFAULT_PASSWORD='<强密码>' \
-  --from-literal=SMTP_PASSWORD=''
+  --from-literal=SMTP_PASSWORD='' \
+  --from-literal=SMTP_FALLBACK_PASSWORD=''
 
 # 2. 修改 k8s/ingress.yaml 中的域名后部署
 kubectl apply -k k8s
@@ -65,7 +66,7 @@ kubectl apply -k k8s
 | 网络测试 | TCP 端口连通性测试 |
 | 审计日志 | 记录所有管理员操作（操作者/时间/IP/详情），180 天保留 |
 | 链路追踪 | OpenTelemetry 采集 Ingress、前端代理、平台 API、脚本执行、站点巡检与外部调用；执行历史/审计日志深链到 Jaeger（K8s 内置） |
-| 消息通知 | SMTP 邮件配置，密钥到期邮件告警 |
+| 消息通知 | 双 SMTP 告警邮件（主故障自动切备用、熔断），覆盖密钥到期、主机资源、站点监控、证书续签等邮件告警；密码重置/MFA 事务邮件仍只走主 SMTP |
 | 全局告警横幅 | 页面顶部居中显示告警摘要（含主机资源告警），按严重度着色，60s 轮询 |
 | 密码修改 | 登录后通过顶部栏下拉菜单修改密码 |
 | 版本信息 | 管理员在个人中心查看当前部署版本，未登录不可见 |
@@ -77,6 +78,19 @@ kubectl apply -k k8s
 ### 链路追踪
 
 K8s 部署内置 Jaeger v2 接收 OTLP。后端 API、脚本执行、站点巡检与出站 HTTP 调用自动产出 trace；K8s 下 Ingress Controller 和前端 nginx 也通过 OTel 上报，完整链路为 `nginx-ingress → openassassin-frontend → openassassin-backend`。执行历史/审计日志显示 `trace_id` 并深链到 Jaeger UI。Jaeger 默认保留 7 天（Badger + PVC），由 `k8s/jaeger-config.yaml` 调整；Docker Compose / 本地开发默认关闭（`TRACING_ENABLED=false`）。Jaeger UI 无内置登录，必须通过 basic auth 或内网访问，详见 [k8s/README.md](k8s/README.md)。
+
+### SMTP 告警故障转移
+
+配置 `SMTP_FALLBACK_HOST` 后，**告警邮件**按主 → 备顺序发送：主 SMTP 连接、TLS、认证或服务端错误时自动改用备用；`SMTP_FALLBACK_HOST` 留空即关闭故障转移。密码重置、MFA 验证码等事务邮件始终只走主 SMTP，备用配置不能替代主 SMTP。
+
+- 收件人级拒绝（550/551/553）不切换、不计入熔断；其他服务商级错误才切换并累计失败。
+- 主 SMTP 连续失败 `SMTP_ALERT_CIRCUIT_FAILURES` 次后熔断 `SMTP_ALERT_CIRCUIT_OPEN_SECONDS` 秒，期间告警直接走备用；冷却后放行一次探测，成功即恢复。
+- 单次尝试超时 `SMTP_ALERT_TIMEOUT_SECONDS`，一次告警主备合计不超过 `SMTP_ALERT_TOTAL_BUDGET_SECONDS`；批量告警复用同一连接，主连接中途失败只把未送达收件人交给备用。
+- 只有确认送达才推进告警去重/冷却状态；投递失败会在后续检查周期重试（主机事件、证书续签通知等无状态提醒仍为尽力而为）。
+- 「消息通知」页面展示主/备配置、熔断状态、最近错误，并可按 `auto` / `primary` / `fallback` 发送测试邮件；状态接口不返回用户名和密码。
+- 投递语义为至少一次：主 SMTP 已接收但连接中断时，重试备用可能产生重复告警。
+- 熔断状态与站点告警重试标记保存在进程内，重启后清零；后端需保持单副本。
+- TLS 默认使用系统 CA 校验证书；自签名/内部 SMTP 需通过 `SSL_CERT_FILE` 指定 CA。生产环境同时应配置 SPF、DKIM、DMARC，并确认主备服务商的数据地域与合规要求。
 
 ## 技术栈
 
@@ -141,11 +155,23 @@ openassassin/
 | `SANDBOX_CPU_LIMIT` | `0.5` | 沙箱 CPU 限制 |
 | `SANDBOX_DEFAULT_TIMEOUT` | `300` | 脚本默认超时 (秒) |
 | `SANDBOX_MAX_TIMEOUT` | `3600` | 脚本最大超时 (秒) |
-| `SMTP_HOST` | — | SMTP 服务器地址 (密码找回/告警) |
-| `SMTP_PORT` | `587` | SMTP 端口 |
-| `SMTP_USERNAME` | — | SMTP 用户名 |
-| `SMTP_PASSWORD` | — | SMTP 密码 |
-| `SMTP_FROM` | — | 发件人地址 |
+| `SMTP_HOST` | — | 主 SMTP 服务器地址 (密码找回/MFA/告警) |
+| `SMTP_PORT` | `587` | 主 SMTP 端口；465 使用 SSL，其他端口按 `SMTP_USE_TLS` 走 STARTTLS |
+| `SMTP_USERNAME` | — | 主 SMTP 用户名，留空则不登录 |
+| `SMTP_PASSWORD` | — | 主 SMTP 密码 |
+| `SMTP_FROM` | — | 主 SMTP 发件人地址 |
+| `SMTP_USE_TLS` | `true` | 主 SMTP 是否启用 STARTTLS |
+| `SMTP_FALLBACK_HOST` | — | 备用 SMTP 地址；留空则仅告警邮件走主 SMTP |
+| `SMTP_FALLBACK_PORT` | `587` | 备用 SMTP 端口 |
+| `SMTP_FALLBACK_USERNAME` | — | 备用 SMTP 用户名，留空则不登录 |
+| `SMTP_FALLBACK_PASSWORD` | — | 备用 SMTP 密码（K8s 放 Secret） |
+| `SMTP_FALLBACK_FROM` | — | 备用发件人；留空时使用备用用户名 |
+| `SMTP_FALLBACK_USE_TLS` | `true` | 备用 SMTP 是否启用 STARTTLS |
+| `SMTP_TIMEOUT_SECONDS` | `15` | 事务邮件单次 SMTP 操作超时 (秒) |
+| `SMTP_ALERT_TIMEOUT_SECONDS` | `10` | 告警邮件单次尝试超时 (秒) |
+| `SMTP_ALERT_TOTAL_BUDGET_SECONDS` | `25` | 一次告警主备合计发送预算 (秒) |
+| `SMTP_ALERT_CIRCUIT_FAILURES` | `3` | 主/备 SMTP 连续失败多少次后熔断 |
+| `SMTP_ALERT_CIRCUIT_OPEN_SECONDS` | `300` | 熔断冷却时间 (秒) |
 | `ALERT_EMAIL` | — | 密钥到期告警收件邮箱 |
 | `ALERT_BEFORE_DAYS` | `7` | 提前多少天触发到期告警 |
 | `ALERT_CHECK_INTERVAL_MINUTES` | `60` | 后台告警检查间隔 (分钟) |
@@ -202,7 +228,7 @@ npm run test      # 运行测试
 ### 测试
 
 ```bash
-# 后端测试 (262 用例)
+# 后端测试
 cd backend && pytest tests/ -v
 
 # 前端测试 (15 用例)
@@ -319,8 +345,8 @@ PR → backend-tests  ──┐
 |------|------|------|------|
 | POST | `/api/v1/audit-logs/cleanup` | 清理过期审计日志 | 是 |
 | POST | `/api/v1/network/test` | TCP 端口连通性测试 | 是 |
-| GET | `/api/v1/notifications/smtp-status` | SMTP 配置状态 | 是 |
-| POST | `/api/v1/notifications/test-email` | 发送测试邮件 | 是 |
+| GET | `/api/v1/notifications/smtp-status` | 主/备 SMTP 配置与熔断状态（不含用户名密码） | 是 |
+| POST | `/api/v1/notifications/test-email` | 发送测试邮件，`provider` 可选 `auto` / `primary` / `fallback` | 是 |
 | GET | `/api/v1/system/version` | 当前部署版本 | 管理员 |
 | GET | `/api/v1/system/tracing` | 链路追踪开关与 Jaeger UI 地址 | 是 |
 | GET | `/api/health` | 健康检查 | 否 |
