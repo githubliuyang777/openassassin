@@ -36,6 +36,17 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""
     smtp_use_tls: bool = True
+    smtp_timeout_seconds: int = 15
+    smtp_fallback_host: str = ""
+    smtp_fallback_port: int = 587
+    smtp_fallback_username: str = ""
+    smtp_fallback_password: str = ""
+    smtp_fallback_from: str = ""
+    smtp_fallback_use_tls: bool = True
+    smtp_alert_timeout_seconds: int = 10
+    smtp_alert_total_budget_seconds: int = 25
+    smtp_alert_circuit_failures: int = 3
+    smtp_alert_circuit_open_seconds: int = 300
     alert_email: str = ""
     alert_before_days: int = 7
     alert_check_interval_minutes: int = 60

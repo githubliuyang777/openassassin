@@ -96,6 +96,18 @@ if [ -n "$AUTH_HEADER" ]; then
   check "GET /api/v1/vulnerabilities/components — authenticated" 200 GET "$BASE/api/v1/vulnerabilities/components" "" "$AUTH_HEADER"
 fi
 
+# 7c. SMTP alert status (read-only, no outbound calls)
+if [ -n "$AUTH_HEADER" ]; then
+  check "GET /api/v1/notifications/smtp-status — authenticated" 200 GET "$BASE/api/v1/notifications/smtp-status" "" "$AUTH_HEADER"
+  if [ "$(jq -r 'has("primary") and has("fallback")' /tmp/smoke_resp.txt 2>/dev/null)" = "true" ]; then
+    echo "  PASS smtp-status reports primary and fallback providers"
+    PASS=$((PASS + 1))
+  else
+    echo "  FAIL smtp-status is missing primary/fallback providers"
+    FAIL=$((FAIL + 1))
+  fi
+fi
+
 # 7b. Certificate providers (read-only, no outbound calls)
 if [ -n "$AUTH_HEADER" ]; then
   check "GET /api/v1/cert-providers — authenticated" 200 GET "$BASE/api/v1/cert-providers" "" "$AUTH_HEADER"

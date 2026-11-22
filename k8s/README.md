@@ -55,7 +55,8 @@ kubectl -n openassassin create secret generic openassassin-secrets \
   --from-literal=JWT_SECRET="$(openssl rand -hex 32)" \
   --from-literal=MASTER_KEY="$(openssl rand -hex 32)" \
   --from-literal=ADMIN_DEFAULT_PASSWORD='<设置一个强密码>' \
-  --from-literal=SMTP_PASSWORD=''
+  --from-literal=SMTP_PASSWORD='' \
+  --from-literal=SMTP_FALLBACK_PASSWORD=''   # 可选：备用 SMTP 密码（仅告警邮件）
 ```
 
 注意事项：
@@ -64,6 +65,9 @@ kubectl -n openassassin create secret generic openassassin-secrets \
   所有历史密钥将无法解密。
 - `ADMIN_DEFAULT_PASSWORD` 只在首次建库（admin 用户不存在）时生效，之后修改 Secret 不会改密。
 - 忘记密码可通过登录页「忘记密码」重置（需配置 SMTP）。
+- `SMTP_FALLBACK_PASSWORD` 为可选项；Deployment 以 `optional: true` 引用，旧的四键 Secret
+  升级后仍可正常启动。启用备用 SMTP 时再补充该键并滚动重启：
+  `kubectl -n openassassin patch secret openassassin-secrets --type merge -p '{"stringData":{"SMTP_FALLBACK_PASSWORD":"<备用密码>"}}'`
 - 生产环境建议使用 Sealed Secrets / External Secrets Operator 管理同名 Secret；
   Kustomize 不管理 Secret，`kubectl apply -k` 不会覆盖它。
 
@@ -76,7 +80,9 @@ kubectl apply -f k8s/secret.yaml
 ```
 
 `kubectl apply -f k8s/` 不会递归读取 `examples/` 子目录，因此示例文件不会被误应用。
-Secret 必须先于 Deployment 存在，且四个键缺一不可（Deployment 使用逐键 `secretKeyRef`）。
+Secret 必须先于 Deployment 存在：`JWT_SECRET`、`MASTER_KEY`、`ADMIN_DEFAULT_PASSWORD`、
+`SMTP_PASSWORD` 四个键缺一不可（Deployment 使用逐键 `secretKeyRef`）；`SMTP_FALLBACK_PASSWORD`
+可选，缺失不影响启动。
 
 ## 3. 配置域名 / TLS
 
@@ -251,6 +257,7 @@ kubectl -n openassassin exec "$POD" -- rm -f /app/data/ops.db.bak
 | 数据 | `./data` 目录 | PVC `openassassin-data`（10Gi） |
 | 入口 | `:8080` | Ingress → frontend:80 |
 | 密钥 | `.env` | Secret `openassassin-secrets` |
+| SMTP 告警 | `.env` 中配置主/备 SMTP | `config.env` 配非敏感项，密码放 Secret；备用密码可选 |
 | 链路追踪 | 默认关闭（`TRACING_ENABLED=false`，可接本机 Jaeger） | 内置 Jaeger v2（`TRACING_ENABLED=true`），默认保留 7 天 |
 
 > 沙箱禁用期间，每次点击执行仍会创建一条 `failed` 执行记录（日志含
@@ -289,7 +296,7 @@ kubectl -n openassassin get events --sort-by=.lastTimestamp
 |---|---|
 | PVC 一直 Pending | 集群无默认 StorageClass，或没有可用 PV；检查 `kubectl get sc,pv` |
 | 日志出现 `database is locked` / 数据异常 | PVC 落在 NFS/EFS/CephFS 等网络存储；改用块存储 StorageClass |
-| Pod 报 `secret "openassassin-secrets" not found` 或 `couldn't find key ...` | 未创建 Secret 或缺键，按第 2 步创建四个键 |
+| Pod 报 `secret "openassassin-secrets" not found` 或 `couldn't find key ...` | 未创建 Secret 或缺必需键，按第 2 步创建四个必需键；`SMTP_FALLBACK_PASSWORD` 缺失不会阻塞启动 |
 | backend CrashLoopBackOff，日志提示只读文件系统 | 确认 PVC 挂载在 `/app/data`；如仍失败，将 `readOnlyRootFilesystem` 改为 `false` |
 | frontend CrashLoopBackOff | 检查 `backend` Service 是否存在；或先将 frontend 的 `readOnlyRootFilesystem` 改为 `false` |
 | frontend 日志提示 `unknown directive "otel_exporter"` | 前端镜像不是 `nginx:*-alpine-otel`，或 `load_module` 未生效；确认镜像与 Dockerfile |
@@ -298,6 +305,9 @@ kubectl -n openassassin get events --sort-by=.lastTimestamp
 | 502 Bad Gateway | 后端未 Ready，或后端 Service 名被改动（必须叫 `backend`） |
 | 脚本执行提示 `[SANDBOX_DISABLED]` | 预期行为，见第 8 节 |
 | 升级后旧凭据无法解密 | `MASTER_KEY` 被更换，需恢复原 Secret |
+| 消息通知页显示备用 SMTP 未配置 | `config.env` 的 `SMTP_FALLBACK_HOST` 为空，或未配置备用用户名/发件人；补全后 `kubectl apply -k k8s` 并重启 backend |
+| 告警切换备用后不恢复主 SMTP | 正常熔断行为：主 SMTP 冷却 `SMTP_ALERT_CIRCUIT_OPEN_SECONDS`（默认 300 秒）后放行一次探测；也可在页面用 `primary` 发送测试邮件确认主通道 |
+| 测试邮件成功但忘记密码/MFA 邮件失败 | 事务邮件仅使用主 SMTP，备用 SMTP 只覆盖告警；修复主 SMTP 配置 |
 | Jaeger Pod CrashLoopBackOff | 查看 `kubectl -n openassassin logs deploy/jaeger`；确认 `jaeger-config` ConfigMap 已挂载、镜像 tag 可拉取 |
 | Jaeger 只有 backend，没有 Ingress/frontend span | 检查 infra 的 `otel-exporter-endpoint`、`otel-trace-in-http`、`otel-trace-context: propagate`，Jaeger 4317 是否可达，前端 `OTEL_TRACE_MODE=on` |
 | 执行历史/审计日志没有「链路」链接 | `TRACING_ENABLED` 未开启或 `TRACING_UI_URL` 为空；检查 `GET /api/v1/system/tracing` |

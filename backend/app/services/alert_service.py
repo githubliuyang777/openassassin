@@ -1,3 +1,4 @@
+import logging
 from datetime import timedelta
 
 from sqlalchemy.orm import Session
@@ -11,6 +12,8 @@ from app.models.subscription import SubscriptionAlert, Subscription
 from app.models.site_monitor import SiteMonitor
 from app.models.vulnerability import VulnerabilityComponent, VulnerabilityFinding
 from app.database import china_now
+
+logger = logging.getLogger(__name__)
 
 SEVERITY_DANGER = "danger"
 SEVERITY_WARNING = "warning"
@@ -236,13 +239,20 @@ def check_and_alert(db: Session) -> int:
 
 请及时更新密钥，以免影响服务运行。
 """
-            send_group_notification(
+            result = send_group_notification(
                 db, getattr(cred, 'notification_group_id', None),
                 settings.alert_email, subject, body,
             )
-            cred.last_alerted_at = now
-            db.commit()
-            sent += 1
-        except Exception:
-            pass
+            if result.delivered:
+                cred.last_alerted_at = now
+                db.commit()
+                sent += 1
+            else:
+                logger.warning(
+                    "Credential alert for %s was not delivered: %s",
+                    cred.name,
+                    "; ".join(result.errors),
+                )
+        except Exception as exc:
+            logger.warning("Credential alert for %s failed: %s", cred.name, type(exc).__name__)
     return sent

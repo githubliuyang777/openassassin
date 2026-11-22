@@ -13,6 +13,11 @@ os.environ["ENABLE_API_DOCS"] = "false"
 
 os.environ["AUDIT_ENABLED"] = "false"
 os.environ["TRACING_ENABLED"] = "false"
+# Never send real mail from tests, even if the developer has a local .env.
+os.environ["SMTP_HOST"] = ""
+os.environ["SMTP_PASSWORD"] = ""
+os.environ["SMTP_FALLBACK_HOST"] = ""
+os.environ["SMTP_FALLBACK_PASSWORD"] = ""
 
 from app.database import Base, get_db, engine
 from app.main import app

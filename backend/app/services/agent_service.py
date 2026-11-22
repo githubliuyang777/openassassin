@@ -98,9 +98,6 @@ def _check_usage_alerts(db: Session, host, data: AgentReportRequest) -> None:
 
         # Consecutive count reached AND not already in alert state → trigger alert
         if host.consecutive_alerts >= consecutive_required and not host.alert_active:
-            host.alert_active = True
-            host.last_alerted_at = now
-
             duration_sec = host.consecutive_alerts * 30  # approximate based on report interval
             subject = f"[openAssassin] 主机资源告警: {host.name}"
             body = (
@@ -113,19 +110,24 @@ def _check_usage_alerts(db: Session, host, data: AgentReportRequest) -> None:
             )
 
             try:
-                send_group_notification(
+                result = send_group_notification(
                     db, host.notification_group_id, settings.alert_email, subject, body,
                 )
-                logger.info("Usage alert sent for host %d: %s", host.id, ", ".join(over_items))
+                if result.delivered:
+                    host.alert_active = True
+                    host.last_alerted_at = now
+                    logger.info("Usage alert sent for host %d: %s", host.id, ", ".join(over_items))
+                else:
+                    logger.warning(
+                        "Usage alert for host %d was not delivered: %s",
+                        host.id, "; ".join(result.errors),
+                    )
             except Exception as e:
                 logger.error("Failed to send usage alert for host %d: %s", host.id, e)
 
     else:
         # Below threshold — check if recovery notification needed
         if host.alert_active:
-            host.alert_active = False
-            host.consecutive_alerts = 0
-
             subject = f"[openAssassin] 主机资源恢复: {host.name}"
             body = (
                 f"主机 {host.name}（{host.hostname}）资源使用率已恢复正常\n\n"
@@ -134,10 +136,18 @@ def _check_usage_alerts(db: Session, host, data: AgentReportRequest) -> None:
             )
 
             try:
-                send_group_notification(
+                result = send_group_notification(
                     db, host.notification_group_id, settings.alert_email, subject, body,
                 )
-                logger.info("Recovery notification sent for host %d", host.id)
+                if result.delivered:
+                    host.alert_active = False
+                    host.consecutive_alerts = 0
+                    logger.info("Recovery notification sent for host %d", host.id)
+                else:
+                    logger.warning(
+                        "Recovery notification for host %d was not delivered: %s",
+                        host.id, "; ".join(result.errors),
+                    )
             except Exception as e:
                 logger.error("Failed to send recovery notification for host %d: %s", host.id, e)
         else:
@@ -354,8 +364,14 @@ def _check_and_notify_events(db: Session, host_id: int, host_name: str, host, ev
 
         if should_notify:
             try:
-                send_group_notification(db, notification_group_id, fallback_email, subject, body)
-                logger.info("Event alert sent for host %d: %s", host_id, subject)
+                result = send_group_notification(db, notification_group_id, fallback_email, subject, body)
+                if result.delivered:
+                    logger.info("Event alert sent for host %d: %s", host_id, subject)
+                else:
+                    logger.warning(
+                        "Event alert for host %d was not delivered: %s",
+                        host_id, "; ".join(result.errors),
+                    )
             except Exception as e:
                 logger.error("Failed to send event alert for host %d: %s", host_id, e)
 

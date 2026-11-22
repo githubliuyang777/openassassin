@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import socket
+import threading
 import time
 
 import httpx
@@ -14,6 +15,28 @@ from app.models.site_monitor import SiteMonitor, SiteCheckResult
 from app.schemas.site_monitor import SiteMonitorCreate, SiteMonitorUpdate
 
 logger = logging.getLogger(__name__)
+
+# Down alerts fire on the up→down edge. If delivery fails, retry on later checks
+# instead of consuming the transition. In-memory by design (single replica).
+_DOWN_ALERT_RETRY_SECONDS = 300
+_down_alert_retry_at: dict[int, float] = {}
+_down_alert_lock = threading.Lock()
+
+
+def _down_alert_retry_due(monitor_id: int) -> bool:
+    with _down_alert_lock:
+        retry_at = _down_alert_retry_at.get(monitor_id)
+        return retry_at is not None and time.monotonic() >= retry_at
+
+
+def _schedule_down_alert_retry(monitor_id: int) -> None:
+    with _down_alert_lock:
+        _down_alert_retry_at[monitor_id] = time.monotonic() + _DOWN_ALERT_RETRY_SECONDS
+
+
+def _clear_down_alert_retry(monitor_id: int) -> None:
+    with _down_alert_lock:
+        _down_alert_retry_at.pop(monitor_id, None)
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -189,23 +212,29 @@ def run_single_check(monitor: SiteMonitor) -> SiteCheckResult:
         if was_up and not ok:
             logger.info("Site %s (%s) went DOWN", monitor.name, monitor.target)
             _send_down_alert(db, m or monitor, error)
+        elif not was_up and not ok and _down_alert_retry_due(monitor.id):
+            logger.info("Retrying down alert for site %s (%s)", monitor.name, monitor.target)
+            _send_down_alert(db, m or monitor, error)
         elif not was_up and ok:
             logger.info("Site %s (%s) recovered", monitor.name, monitor.target)
-            _send_up_alert(db, m or monitor)
+            if not _send_up_alert(db, m or monitor):
+                logger.warning("Site recovery notification for %s was not delivered", monitor.name)
+            _clear_down_alert_retry(monitor.id)
 
         return result
     finally:
         db.close()
 
 
-def _send_down_alert(db: Session, monitor: SiteMonitor, error: str | None) -> None:
+def _send_down_alert(db: Session, monitor: SiteMonitor, error: str | None) -> bool | None:
     from datetime import timedelta
     from app.config import settings
     if not monitor.alert_enabled:
-        return
+        _clear_down_alert_retry(monitor.id)
+        return None
     now = china_now()
     if monitor.last_alerted_at and monitor.last_alerted_at > now - timedelta(hours=1):
-        return  # already alerted within 1 hour
+        return None  # already alerted within 1 hour
     try:
         from app.services.notification_service import send_group_notification
         now_str = now.strftime('%Y-%m-%d %H:%M')
@@ -220,20 +249,29 @@ def _send_down_alert(db: Session, monitor: SiteMonitor, error: str | None) -> No
 
 openAssassin 站点监控
 """
-        send_group_notification(
+        result = send_group_notification(
             db, monitor.notification_group_id,
             settings.alert_email, subject, body,
         )
-        monitor.last_alerted_at = now
-        db.commit()
-    except Exception:
-        pass
+        if result.delivered:
+            monitor.last_alerted_at = now
+            db.commit()
+            _clear_down_alert_retry(monitor.id)
+            return True
+        logger.warning(
+            "Site down alert for %s was not delivered: %s",
+            monitor.name, "; ".join(result.errors),
+        )
+    except Exception as exc:
+        logger.warning("Site down alert for %s failed: %s", monitor.name, type(exc).__name__)
+    _schedule_down_alert_retry(monitor.id)
+    return False
 
 
-def _send_up_alert(db: Session, monitor: SiteMonitor) -> None:
+def _send_up_alert(db: Session, monitor: SiteMonitor) -> bool:
     from app.config import settings
     if not monitor.alert_enabled:
-        return
+        return True
     try:
         from app.services.notification_service import send_group_notification
         now = china_now()
@@ -248,12 +286,21 @@ def _send_up_alert(db: Session, monitor: SiteMonitor) -> None:
 
 openAssassin 站点监控
 """
-        send_group_notification(
+        result = send_group_notification(
             db, monitor.notification_group_id,
             settings.alert_email, subject, body,
         )
-    except Exception:
-        pass
+        if result.delivered:
+            _clear_down_alert_retry(monitor.id)
+            return True
+        logger.warning(
+            "Site recovery notification for %s was not delivered: %s",
+            monitor.name, "; ".join(result.errors),
+        )
+        return False
+    except Exception as exc:
+        logger.warning("Site recovery notification for %s failed: %s", monitor.name, type(exc).__name__)
+        return False
 
 
 # ── Background check ───────────────────────────────────────────────────────────
