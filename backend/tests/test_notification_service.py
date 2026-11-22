@@ -127,6 +127,23 @@ class TestNotificationDispatch:
         assert result.dingtalk_delivered is True
         assert any("email/primary/provider" in error for error in result.errors)
 
+    def test_email_exception_does_not_block_dingtalk(self, db_session, monkeypatch):
+        group = _group(db_session, ["a@example.com"], ["13800138000"])
+
+        def broken_email(*args, **kwargs):
+            raise RuntimeError("unexpected smtp failure")
+
+        monkeypatch.setattr(email_service, "send_alert_bulk", broken_email)
+        monkeypatch.setattr(dingtalk_service, "send_alert", lambda *a, **k: True)
+
+        result = notification_service.send_group_notification(
+            db_session, group.id, "", "title", "body",
+        )
+
+        assert result.delivered is True
+        assert result.dingtalk_delivered is True
+        assert result.errors == ["email: RuntimeError"]
+
     def test_dingtalk_error_does_not_leak_webhook(self, db_session, monkeypatch):
         group = _group(db_session, dingtalk_addresses=["13800138000"])
         webhook = "https://oapi.dingtalk.com/robot/send?access_token=SECRET_TOKEN"

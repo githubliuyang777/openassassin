@@ -156,6 +156,7 @@ class CircuitBreaker:
             )
 
 
+# In-process health: the backend is single-replica; a restart resets it.
 _breakers: dict[str, CircuitBreaker] = {}
 _breakers_lock = threading.Lock()
 

@@ -119,6 +119,17 @@ def get_recipient_channels(db: Session, group_id: int) -> Dict[str, List[str]]:
     return result
 
 
+def _merge_email_result(
+    result: NotificationDispatchResult, email_result,
+) -> None:
+    result.email_delivered = email_result.delivered
+    result.email_failed = email_result.failed
+    result.errors.extend(
+        f"email/{error.provider or 'unknown'}/{error.kind}: {error.message}"
+        for error in email_result.errors
+    )
+
+
 def send_group_notification(
     db: Session,
     notification_group_id: int | None,
@@ -142,13 +153,17 @@ def send_group_notification(
 
         email_recipients = channels.get("email", [])
         if email_recipients:
-            email_result = send_alert_bulk(email_recipients, subject, body)
-            result.email_delivered = email_result.delivered
-            result.email_failed = email_result.failed
-            result.errors.extend(
-                f"email/{error.provider or 'unknown'}/{error.kind}: {error.message}"
-                for error in email_result.errors
-            )
+            try:
+                email_result = send_alert_bulk(email_recipients, subject, body)
+            except Exception as exc:
+                result.errors.append(f"email: {type(exc).__name__}")
+                logger.warning(
+                    "Email alert dispatch failed for group %s: %s",
+                    notification_group_id,
+                    type(exc).__name__,
+                )
+            else:
+                _merge_email_result(result, email_result)
 
         dingtalk_recipients = channels.get("dingtalk", [])
         if dingtalk_recipients:
@@ -169,13 +184,13 @@ def send_group_notification(
                     type(exc).__name__,
                 )
     elif fallback_email:
-        email_result = send_alert_email(fallback_email, subject, body)
-        result.email_delivered = email_result.delivered
-        result.email_failed = email_result.failed
-        result.errors.extend(
-            f"email/{error.provider or 'unknown'}/{error.kind}: {error.message}"
-            for error in email_result.errors
-        )
+        try:
+            email_result = send_alert_email(fallback_email, subject, body)
+        except Exception as exc:
+            result.errors.append(f"email: {type(exc).__name__}")
+            logger.warning("Fallback email alert dispatch failed: %s", type(exc).__name__)
+        else:
+            _merge_email_result(result, email_result)
 
     if not result.delivered and not result.errors:
         result.errors.append("no notification channel configured")

@@ -305,7 +305,7 @@ kubectl -n openassassin get events --sort-by=.lastTimestamp
 | 502 Bad Gateway | 后端未 Ready，或后端 Service 名被改动（必须叫 `backend`） |
 | 脚本执行提示 `[SANDBOX_DISABLED]` | 预期行为，见第 8 节 |
 | 升级后旧凭据无法解密 | `MASTER_KEY` 被更换，需恢复原 Secret |
-| 消息通知页显示备用 SMTP 未配置 | `config.env` 的 `SMTP_FALLBACK_HOST` 为空，或未配置备用用户名/发件人；补全后 `kubectl apply -k k8s` 并重启 backend |
+| 消息通知页显示备用 SMTP 未配置 | `config.env` 的 `SMTP_FALLBACK_HOST` 为空（host 是启用故障转移的开关）；补全后 `kubectl apply -k k8s` 并重启 backend，密码放在 Secret 的 `SMTP_FALLBACK_PASSWORD` |
 | 告警切换备用后不恢复主 SMTP | 正常熔断行为：主 SMTP 冷却 `SMTP_ALERT_CIRCUIT_OPEN_SECONDS`（默认 300 秒）后放行一次探测；也可在页面用 `primary` 发送测试邮件确认主通道 |
 | 测试邮件成功但忘记密码/MFA 邮件失败 | 事务邮件仅使用主 SMTP，备用 SMTP 只覆盖告警；修复主 SMTP 配置 |
 | Jaeger Pod CrashLoopBackOff | 查看 `kubectl -n openassassin logs deploy/jaeger`；确认 `jaeger-config` ConfigMap 已挂载、镜像 tag 可拉取 |
