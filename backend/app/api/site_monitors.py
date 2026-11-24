@@ -4,7 +4,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
-from app.schemas.site_monitor import SiteMonitorCreate, SiteMonitorUpdate, SiteMonitorResponse, SiteCheckResultResponse
+from app.schemas.batch import (
+    BatchDeleteRequest, BatchDeleteResponse, BatchToggleAlertRequest,
+)
+from app.schemas.site_monitor import (
+    SiteCheckResultResponse, SiteMonitorBatchSetGroupRequest,
+    SiteMonitorCreate, SiteMonitorResponse, SiteMonitorUpdate,
+)
 from app.services import site_monitor_service
 from app.services.site_monitor_stats import get_all_monitors_sla, export_sla_csv, get_heatmap_data
 
@@ -36,31 +42,33 @@ def export_sla(
     )
 
 
-@router.post("/batch-toggle-alert")
-def batch_toggle_alert(
-    body: dict,
+@router.post("/batch-delete", response_model=BatchDeleteResponse)
+def batch_delete(
+    body: BatchDeleteRequest,
     db: Session = Depends(get_db),
     _user: dict = Depends(get_current_user),
 ):
-    ids = body.get("ids", [])
-    enabled = body.get("enabled", True)
-    if not ids:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请选择监控项")
-    count = site_monitor_service.batch_toggle_alert(db, ids, enabled)
+    deleted, missing = site_monitor_service.delete_monitors(db, body.ids)
+    return BatchDeleteResponse(deleted=deleted, missing=missing)
+
+
+@router.post("/batch-toggle-alert")
+def batch_toggle_alert(
+    body: BatchToggleAlertRequest,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    count = site_monitor_service.batch_toggle_alert(db, body.ids, body.enabled)
     return {"updated": count, "monitors": site_monitor_service.list_monitors(db)}
 
 
 @router.post("/batch-set-notification-group")
 def batch_set_notification_group(
-    body: dict,
+    body: SiteMonitorBatchSetGroupRequest,
     db: Session = Depends(get_db),
     _user: dict = Depends(get_current_user),
 ):
-    ids = body.get("ids", [])
-    group_id = body.get("group_id")  # null to clear
-    if not ids:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请选择监控项")
-    count = site_monitor_service.batch_set_notification_group(db, ids, group_id)
+    count = site_monitor_service.batch_set_notification_group(db, body.ids, body.group_id)
     return {"updated": count, "monitors": site_monitor_service.list_monitors(db)}
 
 

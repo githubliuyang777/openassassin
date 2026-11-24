@@ -21,7 +21,7 @@
         placeholder="全部分组"
         clearable
         style="width: 180px"
-        @update:value="loadMonitors"
+        @update:value="handleGroupChange"
       />
     </n-space>
 
@@ -33,6 +33,12 @@
       <n-button size="small" type="warning" @click="handleBatchAlert(false)">批量关闭告警</n-button>
       <n-divider vertical />
       <n-button size="small" @click="showBatchGroup = true">批量设置通知组</n-button>
+      <BatchDeleteButton
+        size="small"
+        noun="站点监控"
+        :count="checkedRowKeys.length"
+        :action="handleBatchDelete"
+      />
       <n-button size="small" quaternary @click="checkedRowKeys = []">取消选择</n-button>
     </n-space>
 
@@ -204,8 +210,9 @@ import { useMessage, useDialog, NTag, NButton, NIcon, NText, NSpace, NDataTable,
 import { AddOutline, PulseOutline, DownloadOutline, GridOutline, MailOutline, NotificationsOutline } from '@vicons/ionicons5'
 import {
   fetchSiteMonitors, createSiteMonitor, updateSiteMonitor, deleteSiteMonitor, checkNow, fetchHistory, exportSla, fetchHeatmap, fetchMonitorGroups,
-  batchToggleAlert, batchSetNotificationGroup,
+  batchToggleAlert, batchSetNotificationGroup, batchDeleteSiteMonitors,
 } from '@/api/site-monitors'
+import BatchDeleteButton from '@/components/BatchDeleteButton.vue'
 import { fetchGroups } from '@/api/notification-groups'
 import type { NotificationGroup } from '@/api/notification-groups'
 import type { SiteMonitor, SiteMonitorCreate, SiteCheckResult, HeatmapCell } from '@/api/site-monitors'
@@ -383,15 +390,39 @@ async function handleSave() {
   } finally { saving.value = false }
 }
 
+async function handleGroupChange() {
+  checkedRowKeys.value = []
+  await loadMonitors()
+}
+
 function handleDelete(row: SiteMonitor) {
   dialog.warning({
     title: '确认删除', content: `确定要删除 "${row.name}" 吗？`, positiveText: '删除', negativeText: '取消',
     onPositiveClick: async () => {
-      await deleteSiteMonitor(row.id)
-      message.success('删除成功')
-      await loadMonitors()
+      try {
+        await deleteSiteMonitor(row.id)
+        message.success('删除成功')
+        checkedRowKeys.value = checkedRowKeys.value.filter(id => id !== row.id)
+        await loadMonitors()
+      } catch (e: any) {
+        message.error(e.message || '删除失败')
+      }
     },
   })
+}
+
+async function handleBatchDelete() {
+  try {
+    const resp = await batchDeleteSiteMonitors([...checkedRowKeys.value])
+    message.success(`已删除 ${resp.data.deleted} 个站点监控`)
+    if (resp.data.missing.length) {
+      message.warning(`${resp.data.missing.length} 项已不存在，已跳过`)
+    }
+    checkedRowKeys.value = []
+    await loadMonitors()
+  } catch (e: any) {
+    message.error(e.message || '删除失败')
+  }
 }
 
 async function handleCheckNow(row: SiteMonitor) {

@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, type BatchDeleteResult } from './client'
 
 export interface Script {
   id: number
@@ -34,4 +34,8 @@ export function deleteScript(id: number) {
 
 export function executeScript(id: number, credentialIds: number[] = []) {
   return api.post(`/scripts/${id}/execute`, { credential_ids: credentialIds })
+}
+
+export function batchDeleteScripts(ids: number[]) {
+  return api.post<BatchDeleteResult>('/scripts/batch-delete', { ids })
 }

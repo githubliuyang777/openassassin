@@ -12,7 +12,13 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models.baota_panel import BaotaPanel
 from app.models.domain import Domain
-from app.services import credential_service
+from app.services import batch_service, credential_service
+
+
+class BaotaPanelInUseError(ValueError):
+    def __init__(self, panel_ids: list[int]):
+        self.panel_ids = panel_ids
+        super().__init__(f"宝塔面板 {', '.join(map(str, panel_ids))} 仍被域名引用，请先解除域名绑定")
 
 logger = logging.getLogger(__name__)
 
@@ -442,6 +448,23 @@ def panel_in_use(db: Session, panel_id: int) -> bool:
         except (TypeError, ValueError):
             continue
     return False
+
+
+def delete_panels(db: Session, ids: list[int]) -> tuple[int, list[int]]:
+    ids = list(dict.fromkeys(ids))
+    existing = [
+        row_id
+        for (row_id,) in db.query(BaotaPanel.id).filter(BaotaPanel.id.in_(ids)).all()
+    ]
+    if not existing:
+        return 0, ids
+    blocked = [panel_id for panel_id in existing if panel_in_use(db, panel_id)]
+    if blocked:
+        raise BaotaPanelInUseError(blocked)
+    deleted, _ = batch_service.delete_rows(db, BaotaPanel, existing)
+    db.commit()
+    existing_set = set(existing)
+    return deleted, [row_id for row_id in ids if row_id not in existing_set]
 
 
 def test_panel(db: Session, panel_id: int) -> dict:

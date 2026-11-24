@@ -73,10 +73,29 @@ def update_monitor(db: Session, monitor: SiteMonitor, data: SiteMonitorUpdate) -
     return monitor
 
 
-def delete_monitor(db: Session, monitor: SiteMonitor) -> None:
-    _clear_down_alert_retry(monitor.id)
-    db.delete(monitor)
+def delete_monitors(db: Session, ids: list[int]) -> tuple[int, list[int]]:
+    """Delete monitors and their check history, and clear in-memory retry state."""
+    ids = list(dict.fromkeys(ids))
+    existing = [
+        row_id
+        for (row_id,) in db.query(SiteMonitor.id).filter(SiteMonitor.id.in_(ids)).all()
+    ]
+    if existing:
+        db.query(SiteCheckResult).filter(
+            SiteCheckResult.monitor_id.in_(existing)
+        ).delete(synchronize_session=False)
+        db.query(SiteMonitor).filter(
+            SiteMonitor.id.in_(existing)
+        ).delete(synchronize_session=False)
+    for monitor_id in existing:
+        _clear_down_alert_retry(monitor_id)
     db.commit()
+    existing_set = set(existing)
+    return len(existing), [row_id for row_id in ids if row_id not in existing_set]
+
+
+def delete_monitor(db: Session, monitor: SiteMonitor) -> None:
+    delete_monitors(db, [monitor.id])
 
 
 def batch_toggle_alert(db: Session, ids: list[int], enabled: bool) -> int:

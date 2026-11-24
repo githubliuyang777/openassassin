@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, type BatchDeleteResult } from './client'
 
 export interface Host {
   id: number
@@ -105,4 +105,8 @@ export function fetchHostEvents(id: number, hours = 24, severity?: string, categ
   if (severity) params.severity = severity
   if (category) params.category = category
   return api.get<{ items: HostEvent[] }>(`/hosts/${id}/events`, { params })
+}
+
+export function batchDeleteHosts(ids: number[]) {
+  return api.post<BatchDeleteResult>('/hosts/batch-delete', { ids })
 }

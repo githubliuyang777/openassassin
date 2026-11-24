@@ -114,6 +114,27 @@ if [ -n "$AUTH_HEADER" ]; then
   check "GET /api/v1/baota/panels — authenticated" 200 GET "$BASE/api/v1/baota/panels" "" "$AUTH_HEADER"
 fi
 
+# 7d. Bulk delete (batch endpoint + validation)
+if [ -n "$AUTH_HEADER" ]; then
+  monitor_one=$(curl -s -X POST "$BASE/api/v1/site-monitors" \
+    -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+    -d '{"name":"smoke-batch-1","target":"https://example.com","monitor_type":"http"}' | jq -r '.id')
+  monitor_two=$(curl -s -X POST "$BASE/api/v1/site-monitors" \
+    -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+    -d '{"name":"smoke-batch-2","target":"https://example.com","monitor_type":"http"}' | jq -r '.id')
+  check "POST /api/v1/site-monitors/batch-delete" 200 POST "$BASE/api/v1/site-monitors/batch-delete" \
+    "{\"ids\":[$monitor_one,$monitor_two]}" "$AUTH_HEADER"
+  if [ "$(jq -r '.deleted' /tmp/smoke_resp.txt 2>/dev/null)" = "2" ]; then
+    echo "  PASS batch-delete removed both site monitors"
+    PASS=$((PASS + 1))
+  else
+    echo "  FAIL batch-delete did not remove both site monitors"
+    FAIL=$((FAIL + 1))
+  fi
+  check "POST batch-delete — empty ids rejected" 422 POST "$BASE/api/v1/site-monitors/batch-delete" \
+    '{"ids":[]}' "$AUTH_HEADER"
+fi
+
 # 8. Frontend
 check "Frontend :8080" 200 GET "$FRONTEND"
 

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_admin_user
 from app.models.baota_panel import BaotaPanel
+from app.schemas.batch import BatchDeleteRequest, BatchDeleteResponse
 from app.schemas.baota import (
     BaotaDockerSite,
     BaotaPanelCreate,
@@ -47,6 +48,19 @@ def create_panel(
     return _panel_response(baota_service.create_panel(db, data))
 
 
+@router.post("/panels/batch-delete", response_model=BatchDeleteResponse)
+def batch_delete_panels(
+    body: BatchDeleteRequest,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_admin_user),
+):
+    try:
+        deleted, missing = baota_service.delete_panels(db, body.ids)
+    except baota_service.BaotaPanelInUseError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    return BatchDeleteResponse(deleted=deleted, missing=missing)
+
+
 @router.put("/panels/{panel_id}", response_model=BaotaPanelResponse)
 def update_panel(
     panel_id: int,
@@ -69,13 +83,10 @@ def delete_panel(
     panel = db.get(BaotaPanel, panel_id)
     if not panel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="宝塔面板不存在")
-    if baota_service.panel_in_use(db, panel_id):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="该面板仍被域名引用，请先解除域名绑定",
-        )
-    db.delete(panel)
-    db.commit()
+    try:
+        baota_service.delete_panels(db, [panel_id])
+    except baota_service.BaotaPanelInUseError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
 
 @router.post("/panels/{panel_id}/test", response_model=BaotaTestResponse)

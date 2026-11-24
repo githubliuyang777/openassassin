@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, type BatchDeleteResult } from './client'
 
 export interface NotificationRecipient {
   id: number
@@ -55,4 +55,12 @@ export function updateRecipient(id: number, data: Partial<NotificationRecipientC
 
 export function deleteRecipient(id: number) {
   return api.delete(`/notification-recipients/${id}`)
+}
+
+export function batchDeleteGroups(ids: number[]) {
+  return api.post<BatchDeleteResult>('/notification-groups/batch-delete', { ids })
+}
+
+export function batchDeleteRecipients(ids: number[]) {
+  return api.post<BatchDeleteResult>('/notification-recipients/batch-delete', { ids })
 }

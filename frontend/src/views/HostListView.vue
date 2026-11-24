@@ -14,7 +14,19 @@
       </n-space>
     </n-space>
 
-    <n-data-table :columns="columns" :data="hosts" :loading="loading" :row-key="(r: any) => r.id" />
+    <div v-if="checkedRowKeys.length" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 8px 12px; background: #f0f7ff; border-radius: 4px">
+      <span>已选 {{ checkedRowKeys.length }} 项</span>
+      <BatchDeleteButton noun="主机" :count="checkedRowKeys.length" :action="handleBatchDelete" />
+      <n-button size="small" quaternary @click="checkedRowKeys = []">取消选择</n-button>
+    </div>
+
+    <n-data-table
+      v-model:checked-row-keys="checkedRowKeys"
+      :columns="columns"
+      :data="hosts"
+      :loading="loading"
+      :row-key="(r: any) => r.id"
+    />
 
     <!-- Create Modal -->
     <n-modal v-model:show="showCreate" preset="card" title="新建主机" style="width: 520px">
@@ -108,7 +120,8 @@ import { h, ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessage, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NH3, NGrid, NGridItem, NText, NProgress, useDialog } from 'naive-ui'
 import { AddOutline, PlayOutline, CloudOutline } from '@vicons/ionicons5'
-import { fetchHosts, createHost, updateHost, deleteHost, importFromEc2, regenerateAgentToken } from '@/api/hosts'
+import { fetchHosts, createHost, updateHost, deleteHost, importFromEc2, regenerateAgentToken, batchDeleteHosts } from '@/api/hosts'
+import BatchDeleteButton from '@/components/BatchDeleteButton.vue'
 import { fetchCredentials, getTypeLabel } from '@/api/credentials'
 import { fetchInstances, fetchRegions, type Ec2Instance } from '@/api/aws'
 import type { Host, HostCreate, HostUpdate } from '@/api/hosts'
@@ -120,6 +133,7 @@ const message = useMessage()
 const dialog = useDialog()
 
 const hosts = ref<Host[]>([])
+const checkedRowKeys = ref<number[]>([])
 const credentials = ref<Credential[]>([])
 const loading = ref(false)
 const saving = ref(false)
@@ -184,6 +198,7 @@ function renderUsage(field: 'cpu_usage' | 'mem_usage' | 'disk_usage') {
 }
 
 const columns: DataTableColumn<Host>[] = [
+  { type: 'selection' as const },
   { title: '名称', key: 'name', width: 120, render: (r) => h('a', { style: 'color:#2080f0;cursor:pointer', onClick: () => router.push(`/hosts/${r.id}`) }, r.name) },
   { title: '主机地址', key: 'hostname', width: 150, render: (r) => `${r.hostname}:${r.port}` },
   { title: '用户名', key: 'username', width: 70 },
@@ -266,7 +281,21 @@ async function handleUpdate() {
 
 // Delete
 function handleDelete(row: Host) {
-  dialog.warning({ title: '确认删除', content: `确定要删除主机 "${row.name}" 吗？`, positiveText: '删除', negativeText: '取消', onPositiveClick: async () => { try { await deleteHost(row.id); message.success('删除成功'); await loadHosts() } catch (e: any) { message.error(e.message || '删除失败') } } })
+  dialog.warning({ title: '确认删除', content: `确定要删除主机 "${row.name}" 吗？`, positiveText: '删除', negativeText: '取消', onPositiveClick: async () => { try { await deleteHost(row.id); message.success('删除成功'); checkedRowKeys.value = checkedRowKeys.value.filter(id => id !== row.id); await loadHosts() } catch (e: any) { message.error(e.message || '删除失败') } } })
+}
+
+async function handleBatchDelete() {
+  try {
+    const resp = await batchDeleteHosts([...checkedRowKeys.value])
+    message.success(`已删除 ${resp.data.deleted} 台主机`)
+    if (resp.data.missing.length) {
+      message.warning(`${resp.data.missing.length} 项已不存在，已跳过`)
+    }
+    checkedRowKeys.value = []
+    await loadHosts()
+  } catch (e: any) {
+    message.error(e.message || '删除失败')
+  }
 }
 
 // Connect

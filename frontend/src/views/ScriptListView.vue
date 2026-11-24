@@ -9,10 +9,23 @@
     </n-space>
 
     <n-input v-model:value="search" placeholder="搜索脚本名称..." clearable style="width: 300px; margin-bottom: 16px"
-      @update:value="loadScripts" />
+      @update:value="onSearch" />
 
-    <n-data-table remote :columns="columns" :data="scripts" :loading="loading" :row-key="(r: any) => r.id"
-      :pagination="{ page: page, pageSize: pageSize, itemCount: total, onChange: onPageChange }" />
+    <div v-if="checkedRowKeys.length" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 8px 12px; background: #f0f7ff; border-radius: 4px">
+      <span>已选 {{ checkedRowKeys.length }} 项</span>
+      <BatchDeleteButton noun="脚本" :count="checkedRowKeys.length" :action="handleBatchDelete" />
+      <n-button size="small" quaternary @click="checkedRowKeys = []">取消选择</n-button>
+    </div>
+
+    <n-data-table
+      remote
+      v-model:checked-row-keys="checkedRowKeys"
+      :columns="columns"
+      :data="scripts"
+      :loading="loading"
+      :row-key="(r: any) => r.id"
+      :pagination="{ page: page, pageSize: pageSize, itemCount: total, onChange: onPageChange }"
+    />
 
     <n-modal v-model:show="showDelete" preset="card" title="确认删除" style="width: 400px">
       <p>确定要删除脚本 "{{ deleting?.name }}" 吗？</p>
@@ -33,12 +46,14 @@ import {
   NH3, NSpace, NButton, NIcon, NInput, NDataTable, NModal, NTag, useMessage,
 } from 'naive-ui'
 import { AddOutline } from '@vicons/ionicons5'
-import { fetchScripts, deleteScript, type Script } from '@/api/scripts'
+import { fetchScripts, deleteScript, batchDeleteScripts, type Script } from '@/api/scripts'
+import BatchDeleteButton from '@/components/BatchDeleteButton.vue'
 
 const router = useRouter()
 const message = useMessage()
 
 const scripts = ref<Script[]>([])
+const checkedRowKeys = ref<number[]>([])
 const loading = ref(false)
 const search = ref('')
 const page = ref(1)
@@ -49,6 +64,7 @@ const deleting = ref<Script | null>(null)
 const deletingLoading = ref(false)
 
 const columns: any[] = [
+  { type: 'selection' as const },
   { title: '名称', key: 'name', ellipsis: true },
   {
     title: '类型', key: 'type', width: 80,
@@ -78,8 +94,15 @@ async function loadScripts() {
   }
 }
 
+function onSearch() {
+  page.value = 1
+  checkedRowKeys.value = []
+  loadScripts()
+}
+
 function onPageChange(p: number) {
   page.value = p
+  checkedRowKeys.value = []
   loadScripts()
 }
 
@@ -87,14 +110,38 @@ async function confirmDelete() {
   if (!deleting.value) return
   deletingLoading.value = true
   try {
-    await deleteScript(deleting.value.id)
+    const deletedId = deleting.value.id
+    await deleteScript(deletedId)
     message.success('删除成功')
+    checkingPageAfterDelete(1)
+    checkedRowKeys.value = checkedRowKeys.value.filter(id => id !== deletedId)
     showDelete.value = false
     loadScripts()
   } catch (e: any) {
     message.error(e.message)
   } finally {
     deletingLoading.value = false
+  }
+}
+
+function checkingPageAfterDelete(deletedCount: number) {
+  if (page.value > 1 && scripts.value.length <= deletedCount) {
+    page.value -= 1
+  }
+}
+
+async function handleBatchDelete() {
+  try {
+    const resp = await batchDeleteScripts([...checkedRowKeys.value])
+    message.success(`已删除 ${resp.data.deleted} 个脚本`)
+    if (resp.data.missing.length) {
+      message.warning(`${resp.data.missing.length} 项已不存在，已跳过`)
+    }
+    checkingPageAfterDelete(resp.data.deleted)
+    checkedRowKeys.value = []
+    loadScripts()
+  } catch (e: any) {
+    message.error(e.message || '删除失败')
   }
 }
 

@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, type BatchDeleteResult } from './client'
 
 export interface Subscription {
   id: number
@@ -72,4 +72,8 @@ export function markAlertRead(alertId: number) {
 
 export function lookupRepo(repoUrl: string) {
   return api.post<RepoLookupResult>('/subscriptions/lookup', { repo_url: repoUrl })
+}
+
+export function batchDeleteSubscriptions(ids: number[]) {
+  return api.post<BatchDeleteResult>('/subscriptions/batch-delete', { ids })
 }

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
+from app.schemas.batch import BatchDeleteRequest, BatchDeleteResponse
 from app.schemas.notification import (
     NotificationRecipientCreate, NotificationRecipientUpdate, NotificationRecipientResponse,
 )
@@ -26,6 +27,16 @@ def create_recipient(
     _user: dict = Depends(get_current_user),
 ):
     return notification_service.create_recipient(db, data)
+
+
+@router.post("/batch-delete", response_model=BatchDeleteResponse)
+def batch_delete(
+    body: BatchDeleteRequest,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    deleted, missing = notification_service.delete_recipients(db, body.ids)
+    return BatchDeleteResponse(deleted=deleted, missing=missing)
 
 
 @router.put("/{recipient_id}", response_model=NotificationRecipientResponse)

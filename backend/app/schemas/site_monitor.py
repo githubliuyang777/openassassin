@@ -2,6 +2,12 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.schemas.batch import BatchIdsRequest
+
+
+class SiteMonitorBatchSetGroupRequest(BatchIdsRequest):
+    group_id: int | None = None
+
 
 class SiteMonitorCreate(BaseModel):
     name: str

@@ -8,7 +8,23 @@
       </n-button>
     </n-space>
 
-    <n-data-table :columns="columns" :data="credentials" :loading="loading" :row-key="(r: any) => r.id" />
+    <div v-if="checkedRowKeys.length" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 8px 12px; background: #f0f7ff; border-radius: 4px">
+      <span>已选 {{ checkedRowKeys.length }} 项</span>
+      <BatchDeleteButton
+        noun="密钥"
+        :count="checkedRowKeys.length"
+        :action="handleBatchDelete"
+      />
+      <n-button size="small" quaternary @click="checkedRowKeys = []">取消选择</n-button>
+    </div>
+
+    <n-data-table
+      v-model:checked-row-keys="checkedRowKeys"
+      :columns="columns"
+      :data="credentials"
+      :loading="loading"
+      :row-key="(r: any) => r.id"
+    />
 
     <n-modal v-model:show="showCreate" preset="card" title="新建密钥" style="width: 520px">
       <n-form ref="createFormRef" :model="createForm" :rules="createRules" label-placement="top">
@@ -99,14 +115,16 @@ import {
 import { AddOutline, AlertCircleOutline } from '@vicons/ionicons5'
 import {
   fetchCredentials, createCredential, revealCredential, deleteCredential, toggleCredentialAlert,
-  type Credential, type CredentialReveal, CREDENTIAL_TYPES, getTypeLabel,
+  batchDeleteCredentials, type Credential, type CredentialReveal, CREDENTIAL_TYPES, getTypeLabel,
 } from '@/api/credentials'
+import BatchDeleteButton from '@/components/BatchDeleteButton.vue'
 import { fetchGroups } from '@/api/notification-groups'
 import type { NotificationGroup } from '@/api/notification-groups'
 
 const message = useMessage()
 
 const credentials = ref<Credential[]>([])
+const checkedRowKeys = ref<number[]>([])
 const loading = ref(false)
 const showCreate = ref(false)
 const showReveal = ref(false)
@@ -160,6 +178,7 @@ function typeColor(type: string): TagColor {
 }
 
 const columns = computed(() => [
+  { type: 'selection' as const },
   { title: '名称', key: 'name', ellipsis: true, width: 140 },
   {
     title: '类型', key: 'type', width: 90,
@@ -284,14 +303,30 @@ async function confirmDelete() {
   if (!deleting.value) return
   deleting_loading.value = true
   try {
-    await deleteCredential(deleting.value.id)
+    const deletedId = deleting.value.id
+    await deleteCredential(deletedId)
     message.success('删除成功')
+    checkedRowKeys.value = checkedRowKeys.value.filter(id => id !== deletedId)
     showDelete.value = false
     load()
   } catch (e: any) {
     message.error(e.message)
   } finally {
     deleting_loading.value = false
+  }
+}
+
+async function handleBatchDelete() {
+  try {
+    const resp = await batchDeleteCredentials([...checkedRowKeys.value])
+    message.success(`已删除 ${resp.data.deleted} 个密钥`)
+    if (resp.data.missing.length) {
+      message.warning(`${resp.data.missing.length} 项已不存在，已跳过`)
+    }
+    checkedRowKeys.value = []
+    load()
+  } catch (e: any) {
+    message.error(e.message || '删除失败')
   }
 }
 

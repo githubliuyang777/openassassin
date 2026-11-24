@@ -20,6 +20,13 @@ _MODULE_LABEL = {
     "executions": "执行历史",
     "domains": "域名证书",
     "whois-domains": "域名WHOIS",
+    "site-monitors": "站点监控",
+    "notepads": "记事本",
+    "subscriptions": "订阅",
+    "vulnerabilities": "漏洞监控",
+    "notification-groups": "通知组",
+    "notification-recipients": "通知对象",
+    "baota": "证书维护平台",
     "notifications": "消息通知",
     "network": "网络测试",
     "auth": "认证",
@@ -126,6 +133,8 @@ def _build_detail(method: str, module: str, resource_type: str, suffix: str) -> 
         return "批量切换告警"
     if suffix == "/batch-import" and method == "POST":
         return f"批量导入"
+    if suffix.endswith("/batch-delete") and method == "POST":
+        return f"批量删除{resource_type}"
 
     # Check action map
     if key in _ACTION_MAP:

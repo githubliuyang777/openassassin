@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
+from app.schemas.batch import BatchDeleteRequest, BatchDeleteResponse
 from app.schemas.notification import (
     NotificationGroupCreate, NotificationGroupUpdate, NotificationGroupResponse,
     NotificationRecipientCreate, NotificationRecipientUpdate, NotificationRecipientResponse,
@@ -31,6 +32,19 @@ def create_group(
     return notification_service.create_group(db, data)
 
 
+@router.post("/batch-delete", response_model=BatchDeleteResponse)
+def batch_delete(
+    body: BatchDeleteRequest,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    try:
+        deleted, missing = notification_service.delete_groups(db, body.ids)
+    except notification_service.NotificationGroupInUseError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    return BatchDeleteResponse(deleted=deleted, missing=missing)
+
+
 @router.put("/{group_id}", response_model=NotificationGroupResponse)
 def update_group(
     group_id: int,
@@ -53,4 +67,7 @@ def delete_group(
     g = notification_service.get_group(db, group_id)
     if not g:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="通知组不存在")
-    notification_service.delete_group(db, g)
+    try:
+        notification_service.delete_group(db, g)
+    except notification_service.NotificationGroupInUseError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))

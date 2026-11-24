@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import SessionLocal
 from app.models.subscription import Subscription, SubscriptionAlert
+from app.services import batch_service
 
 logger = logging.getLogger(__name__)
 
@@ -56,10 +57,24 @@ def update_subscription(db: Session, sub: Subscription, data) -> Subscription:
     return sub
 
 
-def delete_subscription(db: Session, sub: Subscription) -> None:
-    db.query(SubscriptionAlert).filter(SubscriptionAlert.subscription_id == sub.id).delete()
-    db.delete(sub)
+def delete_subscriptions(db: Session, ids: list[int]) -> tuple[int, list[int]]:
+    ids = list(dict.fromkeys(ids))
+    existing = [
+        row_id
+        for (row_id,) in db.query(Subscription.id).filter(Subscription.id.in_(ids)).all()
+    ]
+    if existing:
+        db.query(SubscriptionAlert).filter(
+            SubscriptionAlert.subscription_id.in_(existing)
+        ).delete(synchronize_session=False)
+    deleted, _ = batch_service.delete_rows(db, Subscription, existing)
     db.commit()
+    existing_set = set(existing)
+    return deleted, [row_id for row_id in ids if row_id not in existing_set]
+
+
+def delete_subscription(db: Session, sub: Subscription) -> None:
+    delete_subscriptions(db, [sub.id])
 
 
 def list_alerts(db: Session, sub_id: int) -> list[SubscriptionAlert]:

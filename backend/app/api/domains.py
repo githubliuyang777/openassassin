@@ -3,6 +3,10 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_admin_user, get_current_user
+from app.schemas.batch import (
+    BatchDeleteRequest, BatchDeleteResponse,
+    BatchSetNotificationGroupRequest, BatchToggleAlertRequest,
+)
 from app.schemas.domain import DomainCreate, DomainBatchImport, DomainResponse, DomainUpdate
 from app.services import cert_provider_service, cert_renew_service, domain_service
 
@@ -116,28 +120,36 @@ def toggle_alert(
     return _to_response(dom)
 
 
-@router.post("/batch-toggle-alert")
-def batch_toggle_alert(
-    body: dict,
+@router.post("/batch-delete", response_model=BatchDeleteResponse)
+def batch_delete(
+    body: BatchDeleteRequest,
     db: Session = Depends(get_db),
     _user: dict = Depends(get_current_user),
 ):
-    ids = body.get("ids", [])
-    enabled = body.get("enabled", True)
-    count = domain_service.batch_toggle_alert(db, ids, enabled)
+    deleted, missing = domain_service.delete_domains(db, body.ids)
+    return BatchDeleteResponse(deleted=deleted, missing=missing)
+
+
+@router.post("/batch-toggle-alert")
+def batch_toggle_alert(
+    body: BatchToggleAlertRequest,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    count = domain_service.batch_toggle_alert(db, body.ids, body.enabled)
     domains = domain_service.list_domains(db)
     return {"updated": count, "domains": domains}
 
 
 @router.post("/batch-set-notification-group")
 def batch_set_notification_group(
-    body: dict,
+    body: BatchSetNotificationGroupRequest,
     db: Session = Depends(get_db),
     _user: dict = Depends(get_current_user),
 ):
-    ids = body.get("ids", [])
-    group_id = body.get("notification_group_id")
-    count = domain_service.batch_set_notification_group(db, ids, group_id)
+    count = domain_service.batch_set_notification_group(
+        db, body.ids, body.notification_group_id,
+    )
     return {"updated": count}
 
 
