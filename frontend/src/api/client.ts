@@ -2,6 +2,11 @@ import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
 import router from '@/router'
 
+export interface BatchDeleteResult {
+  deleted: number
+  missing: number[]
+}
+
 export const api = axios.create({
   baseURL: '/api/v1',
   timeout: 30000,

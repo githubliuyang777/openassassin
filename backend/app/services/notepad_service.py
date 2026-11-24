@@ -3,6 +3,7 @@ from sqlalchemy import or_
 
 from app.models.notepad import Notepad
 from app.schemas.notepad import NotepadCreate, NotepadUpdate
+from app.services import batch_service
 
 
 def list_notepads(db: Session, page: int = 1, page_size: int = 20, search: str = "") -> dict:
@@ -40,6 +41,11 @@ def update_notepad(db: Session, notepad: Notepad, data: NotepadUpdate) -> Notepa
     return notepad
 
 
-def delete_notepad(db: Session, notepad: Notepad) -> None:
-    db.delete(notepad)
+def delete_notepads(db: Session, ids: list[int]) -> tuple[int, list[int]]:
+    deleted, missing = batch_service.delete_rows(db, Notepad, ids)
     db.commit()
+    return deleted, missing
+
+
+def delete_notepad(db: Session, notepad: Notepad) -> None:
+    delete_notepads(db, [notepad.id])

@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, type BatchDeleteResult } from './client'
 
 export interface DomainProviderConfig {
   panel_id?: number
@@ -83,4 +83,8 @@ export function renewDomainCert(id: number): Promise<{ data: { message: string }
 
 export function deleteDomain(id: number): Promise<void> {
   return api.delete(`/domains/${id}`)
+}
+
+export function batchDeleteDomains(ids: number[]) {
+  return api.post<BatchDeleteResult>('/domains/batch-delete', { ids })
 }

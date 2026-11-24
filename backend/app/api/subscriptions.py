@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
+from app.schemas.batch import BatchDeleteRequest, BatchDeleteResponse
 from app.schemas.subscription import (
     SubscriptionCreate, SubscriptionUpdate, SubscriptionResponse,
     SubscriptionAlertResponse, RepoLookupRequest, RepoLookupResponse,
@@ -27,6 +28,16 @@ def create_subscription(
     _user: dict = Depends(get_current_user),
 ):
     return subscription_service.create_subscription(db, data)
+
+
+@router.post("/batch-delete", response_model=BatchDeleteResponse)
+def batch_delete(
+    body: BatchDeleteRequest,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    deleted, missing = subscription_service.delete_subscriptions(db, body.ids)
+    return BatchDeleteResponse(deleted=deleted, missing=missing)
 
 
 @router.put("/{sub_id}", response_model=SubscriptionResponse)

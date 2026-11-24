@@ -7,6 +7,7 @@ import whois
 from sqlalchemy.orm import Session
 
 from app.models.domain_whois import DomainWhois
+from app.services import batch_service
 
 _DOMAIN_RE = re.compile(
     r"^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$"
@@ -138,21 +139,29 @@ def toggle_alert(db: Session, domain_id: int) -> DomainWhois | None:
 
 
 def batch_toggle_alert(db: Session, ids: list[int], enabled: bool) -> int:
-    query = db.query(DomainWhois)
-    if ids:
-        query = query.filter(DomainWhois.id.in_(ids))
-    count = query.update({DomainWhois.alert_enabled: enabled}, synchronize_session=False)
+    count = (
+        db.query(DomainWhois)
+        .filter(DomainWhois.id.in_(ids))
+        .update({DomainWhois.alert_enabled: enabled}, synchronize_session=False)
+    )
     db.commit()
     return count
 
 
 def batch_set_notification_group(db: Session, ids, group_id):
-    query = db.query(DomainWhois)
-    if ids:
-        query = query.filter(DomainWhois.id.in_(ids))
-    count = query.update({DomainWhois.notification_group_id: group_id}, synchronize_session=False)
+    count = (
+        db.query(DomainWhois)
+        .filter(DomainWhois.id.in_(ids))
+        .update({DomainWhois.notification_group_id: group_id}, synchronize_session=False)
+    )
     db.commit()
     return count
+
+
+def delete_domains(db: Session, ids: list[int]) -> tuple[int, list[int]]:
+    deleted, missing = batch_service.delete_rows(db, DomainWhois, ids)
+    db.commit()
+    return deleted, missing
 
 
 def delete_domain(db: Session, domain_id: int) -> bool:

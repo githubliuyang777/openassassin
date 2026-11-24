@@ -4,13 +4,27 @@ from typing import List, Optional, Dict
 
 from sqlalchemy.orm import Session, joinedload
 
+from app.models.credential import Credential
+from app.models.domain import Domain
+from app.models.domain_whois import DomainWhois
+from app.models.host import Host
 from app.models.notification import NotificationGroup, NotificationRecipient
+from app.models.site_monitor import SiteMonitor
+from app.models.subscription import Subscription
 from app.schemas.notification import (
     NotificationGroupCreate, NotificationGroupUpdate,
     NotificationRecipientCreate, NotificationRecipientUpdate,
 )
+from app.services import batch_service
 
 logger = logging.getLogger(__name__)
+
+
+class NotificationGroupInUseError(ValueError):
+    def __init__(self, counts: dict[str, int]):
+        self.counts = counts
+        details = "、".join(f"{label} {count} 个" for label, count in counts.items() if count)
+        super().__init__(f"通知组仍被引用：{details}，请先解除引用")
 
 
 @dataclass
@@ -55,9 +69,48 @@ def update_group(db: Session, group: NotificationGroup, data: NotificationGroupU
     return group
 
 
-def delete_group(db: Session, group: NotificationGroup) -> None:
-    db.delete(group)
+def delete_groups(db: Session, ids: list[int]) -> tuple[int, list[int]]:
+    ids = list(dict.fromkeys(ids))
+    existing = [
+        row_id
+        for (row_id,) in db.query(NotificationGroup.id)
+        .filter(NotificationGroup.id.in_(ids))
+        .all()
+    ]
+    if not existing:
+        return 0, ids
+
+    references = [
+        (Host, "主机"),
+        (Credential, "密钥"),
+        (Domain, "域名证书"),
+        (DomainWhois, "域名WHOIS"),
+        (SiteMonitor, "站点监控"),
+        (Subscription, "订阅"),
+    ]
+    counts = {
+        label: db.query(model)
+        .filter(model.notification_group_id.in_(existing))
+        .count()
+        for model, label in references
+    }
+    if any(counts.values()):
+        raise NotificationGroupInUseError(counts)
+
+    groups = (
+        db.query(NotificationGroup)
+        .filter(NotificationGroup.id.in_(existing))
+        .all()
+    )
+    for group in groups:
+        db.delete(group)  # ORM cascade removes recipients
     db.commit()
+    existing_set = set(existing)
+    return len(groups), [row_id for row_id in ids if row_id not in existing_set]
+
+
+def delete_group(db: Session, group: NotificationGroup) -> None:
+    delete_groups(db, [group.id])
 
 
 # ── Recipients ────────────────────────────────────────────────────────────────
@@ -86,9 +139,14 @@ def update_recipient(db: Session, recipient: NotificationRecipient, data: Notifi
     return recipient
 
 
-def delete_recipient(db: Session, recipient: NotificationRecipient) -> None:
-    db.delete(recipient)
+def delete_recipients(db: Session, ids: list[int]) -> tuple[int, list[int]]:
+    deleted, missing = batch_service.delete_rows(db, NotificationRecipient, ids)
     db.commit()
+    return deleted, missing
+
+
+def delete_recipient(db: Session, recipient: NotificationRecipient) -> None:
+    delete_recipients(db, [recipient.id])
 
 
 # ── Email helpers ─────────────────────────────────────────────────────────────

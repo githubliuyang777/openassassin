@@ -8,6 +8,7 @@ from jose import JWTError
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
+from app.schemas.batch import BatchDeleteRequest, BatchDeleteResponse
 from app.schemas.host import HostCreate, HostUpdate, HostResponse, HostImportRequest
 from app.services import host_service, ssh_service
 from app.services.auth_service import decode_token
@@ -39,6 +40,16 @@ def list_hosts(
     _user: dict = Depends(get_current_user),
 ):
     return host_service.list_hosts(db)
+
+
+@router.post("/batch-delete", response_model=BatchDeleteResponse)
+def batch_delete(
+    body: BatchDeleteRequest,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    deleted, missing = host_service.delete_hosts(db, body.ids)
+    return BatchDeleteResponse(deleted=deleted, missing=missing)
 
 
 @router.get("/{host_id}", response_model=HostResponse)

@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, type BatchDeleteResult } from './client'
 
 export interface VulnerabilityCatalogItem {
   key: string
@@ -93,4 +93,8 @@ export function checkAllVulnerabilities() {
 
 export function updateVulnerabilityFindingStatus(id: number, status: 'open' | 'ignored') {
   return api.put(`/vulnerabilities/findings/${id}/status`, { status })
+}
+
+export function batchDeleteVulnerabilityComponents(ids: number[]) {
+  return api.post<BatchDeleteResult>('/vulnerabilities/components/batch-delete', { ids })
 }

@@ -27,6 +27,13 @@
       <n-divider vertical />
       <n-select v-model:value="selectedNotifGroup" :options="notifGroupOptions" placeholder="通知组" size="tiny" style="width: 160px" clearable />
       <n-button size="tiny" type="info" @click="handleBatchSetNotifGroup">设置通知组</n-button>
+      <n-divider vertical />
+      <BatchDeleteButton
+        size="tiny"
+        noun="WHOIS 域名"
+        :count="checkedRowKeys.length"
+        :action="handleBatchDelete"
+      />
     </div>
 
     <n-data-table
@@ -80,7 +87,8 @@
 import { h, ref, computed, onMounted } from 'vue'
 import { useMessage, NTag, NButton, NIcon, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NH3, NSwitch, NSelect, NDivider, useDialog } from 'naive-ui'
 import { AddOutline, CloudUploadOutline, RefreshOutline } from '@vicons/ionicons5'
-import { fetchWhoisDomains, addWhoisDomain, batchImportWhoisDomains, refreshAllWhoisDomains, refreshWhoisDomain, deleteWhoisDomain, toggleWhoisDomainAlert, batchToggleWhoisDomainAlert, batchSetWhoisNotificationGroup } from '@/api/domain-whois'
+import { fetchWhoisDomains, addWhoisDomain, batchImportWhoisDomains, refreshAllWhoisDomains, refreshWhoisDomain, deleteWhoisDomain, toggleWhoisDomainAlert, batchToggleWhoisDomainAlert, batchSetWhoisNotificationGroup, batchDeleteWhoisDomains } from '@/api/domain-whois'
+import BatchDeleteButton from '@/components/BatchDeleteButton.vue'
 import { fetchGroups } from '@/api/notification-groups'
 import type { NotificationGroup } from '@/api/notification-groups'
 import type { DomainWhoisInfo } from '@/api/domain-whois'
@@ -248,12 +256,27 @@ function handleDelete(row: DomainWhoisInfo) {
       try {
         await deleteWhoisDomain(row.id)
         message.success('删除成功')
+        checkedRowKeys.value = checkedRowKeys.value.filter(id => id !== row.id)
         await loadDomains()
       } catch (e: any) {
-        message.error(e.response?.data?.detail || '删除失败')
+        message.error(e.message || '删除失败')
       }
     },
   })
+}
+
+async function handleBatchDelete() {
+  try {
+    const resp = await batchDeleteWhoisDomains([...checkedRowKeys.value])
+    message.success(`已删除 ${resp.data.deleted} 个 WHOIS 域名`)
+    if (resp.data.missing.length) {
+      message.warning(`${resp.data.missing.length} 项已不存在，已跳过`)
+    }
+    checkedRowKeys.value = []
+    await loadDomains()
+  } catch (e: any) {
+    message.error(e.message || '删除失败')
+  }
 }
 
 async function handleToggleAlert(row: DomainWhoisInfo) {

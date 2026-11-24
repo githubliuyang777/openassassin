@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import china_now
 from app.models.host import Host
+from app.models.host_event import HostEvent
 from app.models.host_metric import HostMetric
 from app.models.credential import Credential
 from app.schemas.host import HostCreate, HostUpdate, HostImportRequest
@@ -45,9 +46,27 @@ def update_host(db: Session, host: Host, data: HostUpdate) -> Host:
     return host
 
 
-def delete_host(db: Session, host: Host) -> None:
-    db.delete(host)
+def delete_hosts(db: Session, ids: list[int]) -> tuple[int, list[int]]:
+    ids = list(dict.fromkeys(ids))
+    existing = [
+        row_id
+        for (row_id,) in db.query(Host.id).filter(Host.id.in_(ids)).all()
+    ]
+    if existing:
+        db.query(HostMetric).filter(
+            HostMetric.host_id.in_(existing)
+        ).delete(synchronize_session=False)
+        db.query(HostEvent).filter(
+            HostEvent.host_id.in_(existing)
+        ).delete(synchronize_session=False)
+        db.query(Host).filter(Host.id.in_(existing)).delete(synchronize_session=False)
     db.commit()
+    existing_set = set(existing)
+    return len(existing), [row_id for row_id in ids if row_id not in existing_set]
+
+
+def delete_host(db: Session, host: Host) -> None:
+    delete_hosts(db, [host.id])
 
 
 def import_from_ec2(db: Session, data: HostImportRequest) -> Host:

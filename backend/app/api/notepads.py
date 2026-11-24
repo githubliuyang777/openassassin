@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
+from app.schemas.batch import BatchDeleteRequest, BatchDeleteResponse
 from app.schemas.notepad import NotepadCreate, NotepadUpdate, NotepadResponse
 from app.services import notepad_service
 
@@ -18,6 +19,16 @@ def list_notepads(
     _user: dict = Depends(get_current_user),
 ):
     return notepad_service.list_notepads(db, page, page_size, search)
+
+
+@router.post("/batch-delete", response_model=BatchDeleteResponse)
+def batch_delete(
+    body: BatchDeleteRequest,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    deleted, missing = notepad_service.delete_notepads(db, body.ids)
+    return BatchDeleteResponse(deleted=deleted, missing=missing)
 
 
 @router.get("/{notepad_id}", response_model=NotepadResponse)

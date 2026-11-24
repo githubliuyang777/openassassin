@@ -2,25 +2,59 @@
   <div>
     <n-h3 style="margin: 0 0 16px">告警通知</n-h3>
 
-    <n-tabs v-model:value="activeTab" type="line">
+    <n-tabs v-model:value="activeTab" type="line" @update:value="clearSelections">
       <n-tab-pane name="groups" tab="通知组">
-        <n-space style="margin-bottom: 12px">
+        <n-space justify="space-between" align="center" style="margin-bottom: 12px">
           <n-button type="primary" size="small" @click="openGroupCreate">
             <template #icon><n-icon><AddOutline /></n-icon></template>
             新建通知组
           </n-button>
+          <n-space v-if="groupCheckedKeys.length" align="center" size="small">
+            <span style="font-size: 12px">已选 {{ groupCheckedKeys.length }} 项</span>
+            <BatchDeleteButton
+              size="small"
+              noun="通知组"
+              :count="groupCheckedKeys.length"
+              :action="handleGroupBatchDelete"
+            />
+            <n-button size="small" quaternary @click="groupCheckedKeys = []">取消选择</n-button>
+          </n-space>
         </n-space>
-        <n-data-table :columns="groupColumns" :data="groups" :loading="loading" :row-key="(r: any) => r.id" size="small" />
+        <n-data-table
+          v-model:checked-row-keys="groupCheckedKeys"
+          :columns="groupColumns"
+          :data="groups"
+          :loading="loading"
+          :row-key="(r: any) => r.id"
+          size="small"
+        />
       </n-tab-pane>
 
       <n-tab-pane name="recipients" tab="通知对象">
-        <n-space style="margin-bottom: 12px">
+        <n-space justify="space-between" align="center" style="margin-bottom: 12px">
           <n-button type="primary" size="small" @click="openRecipientCreate">
             <template #icon><n-icon><AddOutline /></n-icon></template>
             新建通知对象
           </n-button>
+          <n-space v-if="recipientCheckedKeys.length" align="center" size="small">
+            <span style="font-size: 12px">已选 {{ recipientCheckedKeys.length }} 项</span>
+            <BatchDeleteButton
+              size="small"
+              noun="通知对象"
+              :count="recipientCheckedKeys.length"
+              :action="handleRecipientBatchDelete"
+            />
+            <n-button size="small" quaternary @click="recipientCheckedKeys = []">取消选择</n-button>
+          </n-space>
         </n-space>
-        <n-data-table :columns="recipientColumns" :data="recipients" :loading="loading" :row-key="(r: any) => r.id" size="small" />
+        <n-data-table
+          v-model:checked-row-keys="recipientCheckedKeys"
+          :columns="recipientColumns"
+          :data="recipients"
+          :loading="loading"
+          :row-key="(r: any) => r.id"
+          size="small"
+        />
       </n-tab-pane>
     </n-tabs>
 
@@ -72,7 +106,9 @@ import { AddOutline } from '@vicons/ionicons5'
 import {
   fetchGroups, createGroup, updateGroup, deleteGroup,
   fetchRecipients, createRecipient, updateRecipient, deleteRecipient,
+  batchDeleteGroups, batchDeleteRecipients,
 } from '@/api/notification-groups'
+import BatchDeleteButton from '@/components/BatchDeleteButton.vue'
 import type { NotificationGroup, NotificationRecipient } from '@/api/notification-groups'
 
 const message = useMessage()
@@ -85,11 +121,13 @@ const saving = ref(false)
 // ── Groups ───────────────────────────────────────────────────────────────────
 
 const groups = ref<NotificationGroup[]>([])
+const groupCheckedKeys = ref<number[]>([])
 const showGroupForm = ref(false)
 const editingGroupId = ref<number | null>(null)
 const groupForm = ref({ name: '' })
 
 const groupColumns = [
+  { type: 'selection' as const },
   { title: '名称', key: 'name', ellipsis: true },
   { title: '成员数', key: 'recipients', width: 80, render: (r: NotificationGroup) => String(r.recipients?.length || 0) },
   {
@@ -112,6 +150,7 @@ const groupSelectOptions = computed(() =>
 // ── Recipients ───────────────────────────────────────────────────────────────
 
 const recipients = ref<NotificationRecipient[]>([])
+const recipientCheckedKeys = ref<number[]>([])
 const showRecipientForm = ref(false)
 const editingRecipientId = ref<number | null>(null)
 const recipientForm = ref({ name: '', channel_type: 'email', address: '', group_id: null as number | null })
@@ -122,6 +161,7 @@ const channelOptions = [
 ]
 
 const recipientColumns = [
+  { type: 'selection' as const },
   { title: '名称', key: 'name', ellipsis: true },
   { title: '渠道', key: 'channel_type', width: 80, render: (r: NotificationRecipient) => r.channel_type === 'dingtalk' ? '钉钉' : r.channel_type.toUpperCase() },
   { title: '地址', key: 'address', ellipsis: true },
@@ -182,11 +222,39 @@ async function handleGroupSave() {
   finally { saving.value = false }
 }
 
+function clearSelections() {
+  groupCheckedKeys.value = []
+  recipientCheckedKeys.value = []
+}
+
 function handleGroupDelete(row: NotificationGroup) {
   dialog.warning({
     title: '确认删除', content: `确定要删除 "${row.name}" 吗？`, positiveText: '删除', negativeText: '取消',
-    onPositiveClick: async () => { await deleteGroup(row.id); await loadData() },
+    onPositiveClick: async () => {
+      try {
+        await deleteGroup(row.id)
+        message.success('删除成功')
+        groupCheckedKeys.value = groupCheckedKeys.value.filter(id => id !== row.id)
+        await loadData()
+      } catch (e: any) {
+        message.error(e.message || '删除失败')
+      }
+    },
   })
+}
+
+async function handleGroupBatchDelete() {
+  try {
+    const resp = await batchDeleteGroups([...groupCheckedKeys.value])
+    message.success(`已删除 ${resp.data.deleted} 个通知组`)
+    if (resp.data.missing.length) {
+      message.warning(`${resp.data.missing.length} 项已不存在，已跳过`)
+    }
+    groupCheckedKeys.value = []
+    await loadData()
+  } catch (e: any) {
+    message.error(e.message || '删除失败')
+  }
 }
 
 // ── Recipient CRUD ───────────────────────────────────────────────────────────
@@ -223,8 +291,31 @@ async function handleRecipientSave() {
 function handleRecipientDelete(row: NotificationRecipient) {
   dialog.warning({
     title: '确认删除', content: `确定要删除 "${row.name}" 吗？`, positiveText: '删除', negativeText: '取消',
-    onPositiveClick: async () => { await deleteRecipient(row.id); await loadData() },
+    onPositiveClick: async () => {
+      try {
+        await deleteRecipient(row.id)
+        message.success('删除成功')
+        recipientCheckedKeys.value = recipientCheckedKeys.value.filter(id => id !== row.id)
+        await loadData()
+      } catch (e: any) {
+        message.error(e.message || '删除失败')
+      }
+    },
   })
+}
+
+async function handleRecipientBatchDelete() {
+  try {
+    const resp = await batchDeleteRecipients([...recipientCheckedKeys.value])
+    message.success(`已删除 ${resp.data.deleted} 个通知对象`)
+    if (resp.data.missing.length) {
+      message.warning(`${resp.data.missing.length} 项已不存在，已跳过`)
+    }
+    recipientCheckedKeys.value = []
+    await loadData()
+  } catch (e: any) {
+    message.error(e.message || '删除失败')
+  }
 }
 
 onMounted(loadData)

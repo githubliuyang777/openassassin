@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, type BatchDeleteResult } from './client'
 
 export interface BaotaPanel {
   id: number
@@ -77,4 +77,8 @@ export function testBaotaPanel(id: number) {
 export function fetchBaotaDockerSites(panelId: number) {
   // 后端宝塔请求超时为 90s，前端留出余量，避免提前超时后重复发起请求
   return api.get<BaotaDockerSite[]>(`/baota/panels/${panelId}/docker-sites`, { timeout: 95000 })
+}
+
+export function batchDeleteBaotaPanels(ids: number[]) {
+  return api.post<BatchDeleteResult>('/baota/panels/batch-delete', { ids })
 }

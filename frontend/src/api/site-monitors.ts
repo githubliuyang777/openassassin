@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, type BatchDeleteResult } from './client'
 
 export interface SiteMonitor {
   id: number
@@ -111,4 +111,8 @@ export function batchToggleAlert(ids: number[], enabled: boolean) {
 
 export function batchSetNotificationGroup(ids: number[], groupId: number | null) {
   return api.post('/site-monitors/batch-set-notification-group', { ids, group_id: groupId })
+}
+
+export function batchDeleteSiteMonitors(ids: number[]) {
+  return api.post<BatchDeleteResult>('/site-monitors/batch-delete', { ids })
 }

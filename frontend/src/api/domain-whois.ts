@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, type BatchDeleteResult } from './client'
 
 export interface DomainWhoisInfo {
   id: number
@@ -49,4 +49,8 @@ export function batchSetWhoisNotificationGroup(ids: number[], notification_group
 
 export function deleteWhoisDomain(id: number): Promise<void> {
   return api.delete(`/whois-domains/${id}`)
+}
+
+export function batchDeleteWhoisDomains(ids: number[]) {
+  return api.post<BatchDeleteResult>('/whois-domains/batch-delete', { ids })
 }

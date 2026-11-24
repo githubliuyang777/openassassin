@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, type BatchDeleteResult } from './client'
 
 export interface Notepad {
   id: number
@@ -38,4 +38,8 @@ export function updateNotepad(id: number, data: Partial<NotepadCreate>) {
 
 export function deleteNotepad(id: number) {
   return api.delete(`/notepads/${id}`)
+}
+
+export function batchDeleteNotepads(ids: number[]) {
+  return api.post<BatchDeleteResult>('/notepads/batch-delete', { ids })
 }

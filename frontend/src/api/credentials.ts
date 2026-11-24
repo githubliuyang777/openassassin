@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, type BatchDeleteResult } from './client'
 
 export interface Credential {
   id: number
@@ -59,4 +59,8 @@ export const CREDENTIAL_TYPES = [
 
 export function getTypeLabel(type: string): string {
   return CREDENTIAL_TYPES.find(t => t.value === type)?.label || type
+}
+
+export function batchDeleteCredentials(ids: number[]) {
+  return api.post<BatchDeleteResult>('/credentials/batch-delete', { ids })
 }

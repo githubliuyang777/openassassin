@@ -8,7 +8,19 @@
       </n-button>
     </n-space>
 
-    <n-data-table :columns="columns" :data="subs" :loading="loading" :row-key="(r: any) => r.id" />
+    <div v-if="checkedRowKeys.length" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 8px 12px; background: #f0f7ff; border-radius: 4px">
+      <span>已选 {{ checkedRowKeys.length }} 项</span>
+      <BatchDeleteButton noun="订阅" :count="checkedRowKeys.length" :action="handleBatchDelete" />
+      <n-button size="small" quaternary @click="checkedRowKeys = []">取消选择</n-button>
+    </div>
+
+    <n-data-table
+      v-model:checked-row-keys="checkedRowKeys"
+      :columns="columns"
+      :data="subs"
+      :loading="loading"
+      :row-key="(r: any) => r.id"
+    />
 
     <n-modal v-model:show="showForm" preset="card" :title="editingId ? '编辑订阅' : '新建订阅'" style="width: 520px">
       <n-form ref="formRef" :model="form" :rules="formRules" label-placement="top">
@@ -86,7 +98,8 @@
 import { h, ref, reactive, computed, onMounted } from 'vue'
 import { useMessage, NTag, NButton, NIcon, NText, NSpace, NForm, NFormItem, NInput, NSelect, NH3, NDataTable, NModal, NGrid, NGridItem, NList, NListItem, NSwitch, useDialog } from 'naive-ui'
 import { AddOutline } from '@vicons/ionicons5'
-import { fetchSubscriptions, createSubscription, updateSubscription, deleteSubscription, fetchAlerts, markAlertRead, lookupRepo } from '@/api/subscriptions'
+import { fetchSubscriptions, createSubscription, updateSubscription, deleteSubscription, fetchAlerts, markAlertRead, lookupRepo, batchDeleteSubscriptions } from '@/api/subscriptions'
+import BatchDeleteButton from '@/components/BatchDeleteButton.vue'
 import type { Subscription, SubscriptionCreate, SubscriptionAlert, RepoLookupResult } from '@/api/subscriptions'
 import { fetchGroups } from '@/api/notification-groups'
 import type { NotificationGroup } from '@/api/notification-groups'
@@ -96,6 +109,7 @@ const message = useMessage()
 const dialog = useDialog()
 
 const subs = ref<Subscription[]>([])
+const checkedRowKeys = ref<number[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const showForm = ref(false)
@@ -118,6 +132,7 @@ const lookupResult = ref<RepoLookupResult>({ repo_owner: '', repo_name: '', repo
 const alerts = ref<SubscriptionAlert[]>([])
 
 const columns: DataTableColumn<Subscription>[] = [
+  { type: 'selection' as const },
   { title: '组件', key: 'name', width: 130 },
   { title: '仓库', key: 'repo_url', width: 200, ellipsis: { tooltip: true } },
   { title: '最新版本', key: 'last_version', width: 110, render: (r) => r.last_version || '-' },
@@ -206,10 +221,25 @@ function handleDelete(row: Subscription) {
       try {
         await deleteSubscription(row.id)
         message.success('删除成功')
+        checkedRowKeys.value = checkedRowKeys.value.filter(id => id !== row.id)
         await loadSubs()
-      } catch (e: any) { message.error(e.response?.data?.detail || '删除失败') }
+      } catch (e: any) { message.error(e.message || '删除失败') }
     },
   })
+}
+
+async function handleBatchDelete() {
+  try {
+    const resp = await batchDeleteSubscriptions([...checkedRowKeys.value])
+    message.success(`已删除 ${resp.data.deleted} 个订阅`)
+    if (resp.data.missing.length) {
+      message.warning(`${resp.data.missing.length} 项已不存在，已跳过`)
+    }
+    checkedRowKeys.value = []
+    await loadSubs()
+  } catch (e: any) {
+    message.error(e.message || '删除失败')
+  }
 }
 
 async function handleShowAlerts(row: Subscription) {

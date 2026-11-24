@@ -68,6 +68,7 @@ kubectl apply -k k8s
 | 链路追踪 | OpenTelemetry 采集 Ingress、前端代理、平台 API、脚本执行、站点巡检与外部调用；执行历史/审计日志深链到 Jaeger（K8s 内置） |
 | 消息通知 | 双 SMTP 告警邮件（主故障自动切备用、熔断），覆盖密钥到期、主机资源、站点监控、证书续签等邮件告警；密码重置/MFA 事务邮件仍只走主 SMTP |
 | 全局告警横幅 | 页面顶部居中显示告警摘要（含主机资源告警），按严重度着色，60s 轮询 |
+| 批量删除 | 站点监控、域名证书、WHOIS、脚本、密钥、主机、订阅、漏洞组件、记事本、通知组/通知对象、宝塔面板支持多选批量删除；当前页全选、二次确认、引用保护 |
 | 密码修改 | 登录后通过顶部栏下拉菜单修改密码 |
 | 版本信息 | 管理员在个人中心查看当前部署版本，未登录不可见 |
 | 忘记密码 | 邮箱验证码找回密码（需配置 SMTP） |
@@ -231,7 +232,7 @@ npm run test      # 运行测试
 # 后端测试
 cd backend && pytest tests/ -v
 
-# 前端测试 (15 用例)
+# 前端测试
 cd frontend && npm run test
 
 # 冒烟测试 (Docker Compose 启动后)
@@ -249,6 +250,31 @@ PR → backend-tests  ──┐
 ```
 
 ## API 概览
+
+### 批量删除
+
+所有业务配置列表支持 `POST /api/v1/<resource>/batch-delete`：
+
+```json
+{"ids": [1, 2, 3]}
+```
+
+成功返回 `{"deleted": 2, "missing": [3]}`；单次最多 500 个 ID，空列表返回 422，不存在的 ID 幂等忽略。删除在单个事务内完成，子记录（站点检查历史、主机指标/事件、订阅动态、漏洞明细、通知组成员）同步清理。被主机引用的密钥、被业务对象引用的通知组、被域名引用的宝塔面板返回 409，需要先解除引用。
+
+| 资源 | 路径 |
+|---|---|
+| 站点监控 | `/api/v1/site-monitors/batch-delete` |
+| 域名证书 | `/api/v1/domains/batch-delete` |
+| 域名 WHOIS | `/api/v1/whois-domains/batch-delete` |
+| 脚本 | `/api/v1/scripts/batch-delete` |
+| 密钥 | `/api/v1/credentials/batch-delete` |
+| 主机 | `/api/v1/hosts/batch-delete` |
+| 订阅 | `/api/v1/subscriptions/batch-delete` |
+| 漏洞组件 | `/api/v1/vulnerabilities/components/batch-delete` |
+| 记事本 | `/api/v1/notepads/batch-delete` |
+| 通知组 | `/api/v1/notification-groups/batch-delete` |
+| 通知对象 | `/api/v1/notification-recipients/batch-delete` |
+| 宝塔面板（管理员） | `/api/v1/baota/panels/batch-delete` |
 
 ### 认证与用户
 

@@ -10,7 +10,7 @@ from cryptography.hazmat.backends import default_backend
 from sqlalchemy.orm import Session
 
 from app.models.domain import Domain
-from app.services import cert_provider_service
+from app.services import batch_service, cert_provider_service
 
 _DOMAIN_RE = re.compile(
     r"^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$"
@@ -218,21 +218,29 @@ def toggle_alert(db: Session, domain_id: int) -> Domain | None:
 
 
 def batch_toggle_alert(db: Session, ids: list[int], enabled: bool) -> int:
-    query = db.query(Domain)
-    if ids:
-        query = query.filter(Domain.id.in_(ids))
-    count = query.update({Domain.alert_enabled: enabled}, synchronize_session=False)
+    count = (
+        db.query(Domain)
+        .filter(Domain.id.in_(ids))
+        .update({Domain.alert_enabled: enabled}, synchronize_session=False)
+    )
     db.commit()
     return count
 
 
 def batch_set_notification_group(db: Session, ids, group_id):
-    query = db.query(Domain)
-    if ids:
-        query = query.filter(Domain.id.in_(ids))
-    count = query.update({Domain.notification_group_id: group_id}, synchronize_session=False)
+    count = (
+        db.query(Domain)
+        .filter(Domain.id.in_(ids))
+        .update({Domain.notification_group_id: group_id}, synchronize_session=False)
+    )
     db.commit()
     return count
+
+
+def delete_domains(db: Session, ids: list[int]) -> tuple[int, list[int]]:
+    deleted, missing = batch_service.delete_rows(db, Domain, ids)
+    db.commit()
+    return deleted, missing
 
 
 def delete_domain(db: Session, domain_id: int) -> bool:

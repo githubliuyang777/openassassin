@@ -13,10 +13,21 @@
         v-model:value="search"
         placeholder="搜索标题或内容..."
         clearable
-        @update:value="loadList"
+        @update:value="onSearch"
       />
+      <div v-if="checkedRowKeys.length" style="display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: #f0f7ff; border-radius: 4px">
+        <span style="font-size: 12px">已选 {{ checkedRowKeys.length }} 项</span>
+        <BatchDeleteButton
+          size="tiny"
+          noun="记事本"
+          :count="checkedRowKeys.length"
+          :action="handleBatchDelete"
+        />
+        <n-button size="tiny" quaternary @click="checkedRowKeys = []">取消</n-button>
+      </div>
       <n-data-table
         remote
+        v-model:checked-row-keys="checkedRowKeys"
         :columns="columns"
         :data="items"
         :loading="loading"
@@ -65,8 +76,9 @@ import { ref, computed, h, onMounted, nextTick } from 'vue'
 import { useMessage, useDialog, NTag, NButton, NIcon, NSpace, NDataTable, NH3, NInput } from 'naive-ui'
 import { AddOutline } from '@vicons/ionicons5'
 import {
-  fetchNotepads, fetchNotepad, createNotepad, updateNotepad, deleteNotepad,
+  fetchNotepads, fetchNotepad, createNotepad, updateNotepad, deleteNotepad, batchDeleteNotepads,
 } from '@/api/notepads'
+import BatchDeleteButton from '@/components/BatchDeleteButton.vue'
 import type { Notepad } from '@/api/notepads'
 
 const message = useMessage()
@@ -74,6 +86,7 @@ const dialog = useDialog()
 
 // List state
 const items = ref<Notepad[]>([])
+const checkedRowKeys = ref<number[]>([])
 const loading = ref(false)
 const search = ref('')
 const page = ref(1)
@@ -100,6 +113,7 @@ function syncScroll() {
 }
 
 const columns = [
+  { type: 'selection' as const },
   { title: '标题', key: 'title', ellipsis: { tooltip: true }, width: 200 },
   {
     title: '更新时间', key: 'updated_at', width: 130,
@@ -129,8 +143,30 @@ async function loadList() {
   finally { loading.value = false }
 }
 
-function onPageChange(p: number) { page.value = p; loadList() }
-function onPageSizeChange(ps: number) { pageSize.value = ps; page.value = 1; loadList() }
+function onSearch() {
+  page.value = 1
+  checkedRowKeys.value = []
+  loadList()
+}
+
+function onPageChange(p: number) {
+  page.value = p
+  checkedRowKeys.value = []
+  loadList()
+}
+
+function onPageSizeChange(ps: number) {
+  pageSize.value = ps
+  page.value = 1
+  checkedRowKeys.value = []
+  loadList()
+}
+
+function adjustPageAfterDelete(deletedCount: number) {
+  if (page.value > 1 && items.value.length <= deletedCount) {
+    page.value -= 1
+  }
+}
 
 function startNew() {
   editingId.value = null
@@ -176,10 +212,33 @@ function handleDelete(row: Notepad) {
         await deleteNotepad(row.id)
         message.success('删除成功')
         if (editingId.value === row.id) startNew()
+        checkedRowKeys.value = checkedRowKeys.value.filter(id => id !== row.id)
+        adjustPageAfterDelete(1)
         await loadList()
-      } catch (_e) { /* ignore */ }
+      } catch (e: any) {
+        message.error(e.message || '删除失败')
+      }
     },
   })
+}
+
+async function handleBatchDelete() {
+  const ids = [...checkedRowKeys.value]
+  try {
+    const resp = await batchDeleteNotepads(ids)
+    message.success(`已删除 ${resp.data.deleted} 条记事本`)
+    if (resp.data.missing.length) {
+      message.warning(`${resp.data.missing.length} 项已不存在，已跳过`)
+    }
+    if (editingId.value !== null && ids.includes(editingId.value)) {
+      startNew()
+    }
+    checkedRowKeys.value = []
+    adjustPageAfterDelete(resp.data.deleted)
+    await loadList()
+  } catch (e: any) {
+    message.error(e.message || '删除失败')
+  }
 }
 
 onMounted(loadList)

@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 
 from app.models.script import Script
 from app.schemas.script import ScriptCreate, ScriptUpdate
+from app.services import batch_service
 
 
 def list_scripts(db: Session, page: int = 1, page_size: int = 20, search: str = ""):
@@ -33,6 +34,12 @@ def update_script(db: Session, script: Script, data: ScriptUpdate) -> Script:
     return script
 
 
-def delete_script(db: Session, script: Script) -> None:
-    db.delete(script)
+def delete_scripts(db: Session, ids: list[int]) -> tuple[int, list[int]]:
+    # Execution history and log files are retained as historical records.
+    deleted, missing = batch_service.delete_rows(db, Script, ids)
     db.commit()
+    return deleted, missing
+
+
+def delete_script(db: Session, script: Script) -> None:
+    delete_scripts(db, [script.id])

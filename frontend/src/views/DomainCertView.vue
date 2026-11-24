@@ -31,6 +31,13 @@
       <n-divider vertical />
       <n-select v-model:value="selectedNotifGroup" :options="notifGroupOptions" placeholder="通知组" size="tiny" style="width: 160px" clearable />
       <n-button size="tiny" type="info" @click="handleBatchSetNotifGroup">设置通知组</n-button>
+      <n-divider vertical />
+      <BatchDeleteButton
+        size="tiny"
+        noun="域名"
+        :count="checkedRowKeys.length"
+        :action="handleBatchDelete"
+      />
     </div>
 
     <n-data-table
@@ -220,9 +227,28 @@
     <n-modal v-model:show="showPanelModal" preset="card" title="宝塔面板管理" style="width: 820px">
       <n-space justify="space-between" align="center" style="margin-bottom: 12px">
         <span style="font-size: 12px; color: #999">面板需开启 API 接口并将本平台服务器 IP 加入白名单</span>
-        <n-button size="small" type="primary" @click="openPanelCreate">添加面板</n-button>
+        <n-space align="center">
+          <span v-if="panelCheckedKeys.length" style="font-size: 12px; color: #3c6e1f">
+            已选 {{ panelCheckedKeys.length }} 项
+          </span>
+          <BatchDeleteButton
+            v-if="panelCheckedKeys.length"
+            size="small"
+            noun="宝塔面板"
+            :count="panelCheckedKeys.length"
+            :action="handleBatchDeletePanels"
+          />
+          <n-button size="small" type="primary" @click="openPanelCreate">添加面板</n-button>
+        </n-space>
       </n-space>
-      <n-data-table :columns="panelColumns" :data="panels" :loading="panelLoading" :row-key="(r: BaotaPanel) => r.id" size="small" />
+      <n-data-table
+        :columns="panelColumns"
+        :data="panels"
+        :loading="panelLoading"
+        :row-key="(r: BaotaPanel) => r.id"
+        v-model:checked-row-keys="panelCheckedKeys"
+        size="small"
+      />
       <template v-if="showPanelForm">
         <n-divider />
         <n-form :model="panelForm" label-placement="top">
@@ -263,10 +289,11 @@ import { AddOutline, CloudUploadOutline, RefreshOutline, ServerOutline } from '@
 import {
   fetchDomains, addDomain, batchImportDomains, refreshAllDomains, refreshDomain,
   deleteDomain, toggleDomainAlert, batchToggleDomainAlert, batchSetNotificationGroup,
-  updateDomain, renewDomainCert,
+  updateDomain, renewDomainCert, batchDeleteDomains,
 } from '@/api/domains'
+import BatchDeleteButton from '@/components/BatchDeleteButton.vue'
 import { fetchGroups } from '@/api/notification-groups'
-import { fetchBaotaPanels, createBaotaPanel, updateBaotaPanel, deleteBaotaPanel, testBaotaPanel, fetchBaotaDockerSites } from '@/api/baota'
+import { fetchBaotaPanels, createBaotaPanel, updateBaotaPanel, deleteBaotaPanel, testBaotaPanel, fetchBaotaDockerSites, batchDeleteBaotaPanels } from '@/api/baota'
 import { fetchCertProviders } from '@/api/cert-providers'
 import { useAuthStore } from '@/stores/auth'
 import type { DomainInfo, DomainUpdate } from '@/api/domains'
@@ -298,6 +325,7 @@ const addRules = {
 const showImportModal = ref(false)
 const importText = ref('')
 const checkedRowKeys = ref<number[]>([])
+const panelCheckedKeys = ref<number[]>([])
 const selectedNotifGroup = ref<number | null>(null)
 const notificationGroups = ref<NotificationGroup[]>([])
 const notifGroupOptions = computed(() =>
@@ -522,6 +550,7 @@ const columns: DataTableColumn<DomainInfo>[] = [
 ]
 
 const panelColumns: DataTableColumn<BaotaPanel>[] = [
+  { type: 'selection' as const },
   { title: '名称', key: 'name', width: 130, ellipsis: { tooltip: true } },
   { title: '面板地址', key: 'panel_url', ellipsis: { tooltip: true } },
   {
@@ -640,12 +669,27 @@ function handleDelete(row: DomainInfo) {
       try {
         await deleteDomain(row.id)
         message.success('删除成功')
+        checkedRowKeys.value = checkedRowKeys.value.filter(id => id !== row.id)
         await loadDomains()
       } catch (e: any) {
-        message.error(e.response?.data?.detail || '删除失败')
+        message.error(e.message || '删除失败')
       }
     },
   })
+}
+
+async function handleBatchDelete() {
+  try {
+    const resp = await batchDeleteDomains([...checkedRowKeys.value])
+    message.success(`已删除 ${resp.data.deleted} 个域名`)
+    if (resp.data.missing.length) {
+      message.warning(`${resp.data.missing.length} 项已不存在，已跳过`)
+    }
+    checkedRowKeys.value = []
+    await loadDomains()
+  } catch (e: any) {
+    message.error(e.message || '删除失败')
+  }
 }
 
 async function handleToggleAlert(row: DomainInfo) {
@@ -944,6 +988,7 @@ async function handleRenew(row: DomainInfo) {
 function openPanelModal() {
   showPanelModal.value = true
   showPanelForm.value = false
+  panelCheckedKeys.value = []
   void loadMeta()
 }
 
@@ -1005,6 +1050,21 @@ async function handleSavePanel() {
   }
 }
 
+async function handleBatchDeletePanels() {
+  try {
+    const resp = await batchDeleteBaotaPanels([...panelCheckedKeys.value])
+    message.success(`已删除 ${resp.data.deleted} 个宝塔面板`)
+    if (resp.data.missing.length) {
+      message.warning(`${resp.data.missing.length} 项已不存在，已跳过`)
+    }
+    panelCheckedKeys.value = []
+    await loadMeta()
+    await loadDomains(true)
+  } catch (e: any) {
+    message.error(e.message || '删除失败')
+  }
+}
+
 function handleDeletePanel(panel: BaotaPanel) {
   dialog.warning({
     title: '确认删除',
@@ -1015,10 +1075,11 @@ function handleDeletePanel(panel: BaotaPanel) {
       try {
         await deleteBaotaPanel(panel.id)
         message.success('删除成功')
+        panelCheckedKeys.value = panelCheckedKeys.value.filter(id => id !== panel.id)
         await loadMeta()
         await loadDomains(true)
       } catch (e: any) {
-        message.error(e.response?.data?.detail || e.message || '删除失败')
+        message.error(e.message || '删除失败')
       }
     },
   })

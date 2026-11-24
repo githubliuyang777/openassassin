@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
+from app.schemas.batch import BatchDeleteRequest, BatchDeleteResponse
 from app.schemas.vulnerability import (
     CatalogItem,
     ComponentCreate,
@@ -42,6 +43,16 @@ def create_component(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     background.add_task(vulnerability_service.check_component, comp.id, wait=True)
     return vulnerability_service.component_dict(comp)
+
+
+@router.post("/components/batch-delete", response_model=BatchDeleteResponse)
+def batch_delete_components(
+    body: BatchDeleteRequest,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    deleted, missing = vulnerability_service.delete_components(db, body.ids)
+    return BatchDeleteResponse(deleted=deleted, missing=missing)
 
 
 @router.put("/components/{component_id}", response_model=ComponentResponse)

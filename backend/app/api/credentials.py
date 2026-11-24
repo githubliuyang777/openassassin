@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db, CHINA_TZ, china_now
 from app.middleware.auth_middleware import get_current_user
+from app.schemas.batch import BatchDeleteRequest, BatchDeleteResponse
 from app.schemas.credential import CredentialCreate, CredentialUpdate, CredentialResponse, CredentialRevealResponse
 from app.models.credential import Credential
 from app.services import credential_service
@@ -132,14 +133,34 @@ def update_credential(
     return cred
 
 
+@router.post("/batch-delete", response_model=BatchDeleteResponse)
+def batch_delete(
+    body: BatchDeleteRequest,
+    db: Session = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    try:
+        deleted, missing = credential_service.delete_credentials(db, body.ids)
+    except credential_service.CredentialInUseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"密钥仍被 {exc.host_count} 台主机引用，请先解除引用",
+        )
+    return BatchDeleteResponse(deleted=deleted, missing=missing)
+
+
 @router.delete("/{credential_id}", status_code=204)
 def delete_credential(
     credential_id: int,
     db: Session = Depends(get_db),
     _user: dict = Depends(get_current_user),
 ):
-    cred = db.query(Credential).filter(Credential.id == credential_id).first()
-    if not cred:
+    try:
+        deleted, _ = credential_service.delete_credentials(db, [credential_id])
+    except credential_service.CredentialInUseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"密钥仍被 {exc.host_count} 台主机引用，请先解除引用",
+        )
+    if not deleted:
         raise HTTPException(status_code=404, detail="密钥不存在")
-    db.delete(cred)
-    db.commit()
