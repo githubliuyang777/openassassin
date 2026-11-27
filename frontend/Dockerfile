@@ -10,7 +10,8 @@ COPY . .
 RUN npm run build
 
 # 官方 -otel 变体内置 ngx_otel_module，避免自行编译/安装模块
-FROM nginx:1.31.8-alpine-otel
+# 1.31.10 修复 2026-11 nginx2root 系列（CVE-2026-123007 等）及 ssl_early_data CPU 问题
+FROM nginx:1.31.10-alpine-otel
 # Compose 默认关闭追踪；K8s 通过 Deployment env 覆盖
 ENV OTEL_EXPORTER_ENDPOINT=127.0.0.1:4317 \
     OTEL_TRACE_MODE=off
